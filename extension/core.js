@@ -1,0 +1,146 @@
+(() => {
+  const ns = globalThis.ProtoScanner = globalThis.ProtoScanner || {};
+  const normalize = value => String(value).normalize('NFC');
+  const safeName = value => normalize(value).replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').replace(/[. ]+$/g,'').slice(0,100) || 'Ergebnis';
+  function validateWorkflow(flow) {
+    if (!flow || flow.version !== 1 || !Array.isArray(flow.steps) || !flow.steps.length) throw Error('Die Konfiguration benötigt version: 1 und mindestens einen Schritt.');
+    const previous = new Set();
+    for (const step of flow.steps) {
+      if (!step.id || typeof step.id !== 'string' || previous.has(step.id)) throw Error('Jeder Schritt benötigt eine eindeutige Text-ID.');
+      if (typeof step.title !== 'string' || typeof step.prompt !== 'string' || !step.prompt.trim()) throw Error(`Titel oder Prompt fehlt in Schritt ${step.id}.`);
+      if (!Array.isArray(step.files) || step.files.some(f => typeof f !== 'string' || !f)) throw Error(`Ungültige Dateiliste in Schritt ${step.id}.`);
+      if (!Array.isArray(step.reuse) || step.reuse.some(id => !previous.has(id))) throw Error(`Schritt ${step.id} darf nur frühere Ergebnisse referenzieren.`);
+      if (step.requireAsset !== undefined && typeof step.requireAsset !== 'boolean') throw Error('requireAsset muss true oder false sein.');
+      previous.add(step.id);
+    }
+    return flow;
+  }
+  function resolveFiles(names, selected) {
+    return names.map(name => {
+      const matches = selected.filter(f => normalize(f.webkitRelativePath || f.name) === normalize(name) || normalize(f.name) === normalize(name));
+      if (matches.length !== 1) throw Error(matches.length ? `Dateiname ist mehrdeutig: ${name}. Verwende einen vollständigen relativen Pfad in der Konfiguration.` : `Datei fehlt: ${name}`);
+      return matches[0];
+    });
+  }
+  function preflight(flow, files) {
+    validateWorkflow(flow);
+    const errors=[];
+    for (const step of flow.steps) {
+      for (const name of step.files) {
+        try { resolveFiles([name],files); } catch(e) { errors.push(`Schritt ${step.id}: ${e.message}`); }
+      }
+    }
+    return errors;
+  }
+  const markerFor = (run, step) => `[Proto-Disput ${run.id} / Schritt ${step.id}]`;
+  function promptFor(run,step) {
+    return `${step.prompt.replaceAll('{{person}}',run.person)}\n\n${markerFor(run,step)}`;
+  }
+  function newRun(person,flow,url) {
+    if (!person.trim()) throw Error('Bitte eine Zielperson eintragen.');
+    validateWorkflow(flow);
+    return {version:1,id:crypto.randomUUID(),person:person.trim(),flow:structuredClone(flow),chatUrl:url,status:'bereit',results:[],pending:null,createdAt:new Date().toISOString()};
+  }
+  function outputFile(run,result) {
+    return new File([`# ${result.title}\n\nPerson: ${run.person}\nSchritt: ${result.step}\n\n${result.text}\n`],`${safeName(run.person)}_Schritt_${safeName(result.step)}.md`,{type:'text/markdown'});
+  }
+  async function sha256(file) {
+    return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())), b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  async function fileManifest(files) {
+    return (await Promise.all(files.map(async f=>({name:f.webkitRelativePath || f.name,size:f.size,sha256:await sha256(f)})))).sort((a,b)=>a.name.localeCompare(b.name));
+  }
+  function conversationPath(url) {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  }
+  class Runner {
+    constructor(adapter,save,onChange) { this.adapter=adapter; this.save=save; this.onChange=onChange; this.running=false; this.controller=null; }
+    pause() { this.controller?.abort(); }
+    async persist(run) { await this.save(run); this.onChange(run); }
+    async execute(run,selectedFiles,assets={},options={}) {
+      if (this.running) throw Error('Der Ablauf läuft bereits.');
+      const errors=preflight(run.flow,selectedFiles);
+      if (errors.length) throw Error(errors.join('\n'));
+      this.running=true;
+      this.controller=new AbortController();
+      const signal=this.controller.signal;
+      try {
+        const manifest=await fileManifest(selectedFiles);
+        if (run.sourceManifest && JSON.stringify(run.sourceManifest)!==JSON.stringify(manifest)) throw Error('Die ausgewählten Quelldateien unterscheiden sich vom begonnenen Lauf (Inhalt, Reihenfolge oder Dateiname). Bitte dieselben Dateien wählen oder einen neuen Lauf anlegen.');
+        run.sourceManifest=manifest;
+        run.status='läuft'; delete run.error;
+        await this.persist(run);
+        for (let i=run.results.length; i<run.flow.steps.length; i++) {
+          const step=run.flow.steps[i];
+          if (signal.aborted) throw new DOMException('Pausiert','AbortError');
+          if (conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())) throw Error('Der Chat wurde gewechselt. Öffne den ursprünglichen Chat, bevor du fortsetzt.');
+          let result;
+          if (run.pending) {
+            if (run.pending.step!==step.id) throw Error('Der offene Schritt stimmt nicht mit dem Fortschritt überein.');
+            // Never resubmit an uncertain send after interruption/reload.
+            result=await this.adapter.waitForReply(run.pending.marker,signal);
+          } else {
+            const files=resolveFiles(step.files,selectedFiles);
+            for (const id of step.reuse) {
+              const previous=run.results.find(r=>r.step===id);
+              if (!previous) throw Error(`Ergebnis aus Schritt ${id} fehlt.`);
+              files.push(outputFile(run,previous));
+              if (previous.assetNames?.length) {
+                for (const name of previous.assetNames) {
+                  const asset=assets[`${id}/${name}`];
+                  if (!asset) throw Error(`Ergebnisdatei aus Schritt ${id} fehlt im Arbeitsspeicher: ${name}. Über „Ergebnisdateien ergänzen“ erneut auswählen.`);
+                  files.push(new File([asset],`${safeName(run.person)}_Schritt_${safeName(id)}_${asset.name}`,{type:asset.type}));
+                }
+              }
+            }
+            await this.adapter.prepare(files,promptFor(run,step),signal);
+            run.pending={step:step.id,marker:markerFor(run,step),preparedAt:new Date().toISOString()};
+            await this.persist(run);
+            await this.adapter.send(signal);
+            await this.adapter.waitForUser(run.pending.marker,signal);
+            run.chatUrl=this.adapter.url();
+            await this.persist(run);
+            result=await this.adapter.waitForReply(run.pending.marker,signal);
+          }
+          const supplied=Object.entries(assets).filter(([key])=>key.startsWith(`${step.id}/`)).map(([,file])=>file);
+          const captured=await this.adapter.collectAssets(result.element,signal);
+          if (step.requireAsset && !captured.files.length && !supplied.length) throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Die Antwort ist vorhanden, aber es wurde keine zugängliche Datei erkannt. Prüfe den Chat. Falls nötig, lade das Original herunter und wähle es über „Ergebnisdateien ergänzen“ aus. Danach fortsetzen.');
+          const combined=[...supplied,...captured.files];
+          // If collection failed, do not silently drop links from the artifact handoff.
+          if (captured.errors.length && !supplied.length) throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
+          const unique=[...new Map(combined.map(file=>[file.name,file])).values()];
+          for (const file of unique) assets[`${step.id}/${file.name}`]=file;
+          run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,assetWarnings:captured.errors,completedAt:new Date().toISOString()});
+          run.pending=null;
+          run.chatUrl=this.adapter.url();
+          await this.persist(run);
+          if(options.singleStep && run.results.length<run.flow.steps.length){run.status='pausiert';await this.persist(run);return run;}
+        }
+        run.status='fertig'; await this.persist(run);
+      } catch(e) {
+        run.status=signal.aborted?'pausiert':'angehalten'; run.error=e.message;
+        try { await this.persist(run); } catch(storageError) { this.onChange({...run,error:`${e.message}\nLokale Sicherung fehlgeschlagen: ${storageError.message}`}); }
+      } finally { this.running=false; this.onChange(run); }
+      return run;
+    }
+  }
+  // Minimal ZIP writer (STORE): no external library, network dependency or eval.
+  async function zip(entries) {
+    const enc=new TextEncoder(),parts=[],directory=[];
+    let offset=0;
+    const crc32=bytes=>{let c=0xffffffff; for(const byte of bytes){c^=byte;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0);}return(c^0xffffffff)>>>0;};
+    const record=(size,values)=>{const bytes=new Uint8Array(size),v=new DataView(bytes.buffer);for(const [at,value,width]of values)width===2?v.setUint16(at,value,true):v.setUint32(at,value,true);return bytes;};
+    for(const entry of entries){
+      const name=enc.encode(entry.name),data=new Uint8Array(await entry.blob.arrayBuffer()),crc=crc32(data);
+      if(data.length>0xffffffff || offset>0xffffffff)throw Error('ZIP-Datei zu groß.');
+      const local=record(30,[[0,0x04034b50,4],[4,20,2],[6,0x800,2],[14,crc,4],[18,data.length,4],[22,data.length,4],[26,name.length,2]]);
+      const central=record(46,[[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x800,2],[16,crc,4],[20,data.length,4],[24,data.length,4],[28,name.length,2],[42,offset,4]]);
+      parts.push(local,name,data);directory.push(central,name);offset+=30+name.length+data.length;
+    }
+    const directorySize=directory.reduce((n,b)=>n+b.length,0);
+    const end=record(22,[[0,0x06054b50,4],[8,entries.length,2],[10,entries.length,2],[12,directorySize,4],[16,offset,4]]);
+    return new Blob([...parts,...directory,end],{type:'application/zip'});
+  }
+  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,newRun,outputFile,fileManifest,conversationPath,Runner,zip});
+})();
