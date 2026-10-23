@@ -58,6 +58,35 @@
     constructor(adapter,save,onChange) { this.adapter=adapter; this.save=save; this.onChange=onChange; this.running=false; this.controller=null; }
     pause() { this.controller?.abort(); }
     async persist(run) { await this.save(run); this.onChange(run); }
+    async recordResult(run,step,result,assets,signal,manual=false){
+      const chat=conversationPath(this.adapter.url());
+      const supplied=Object.entries(assets).filter(([key])=>key.startsWith(`${step.id}/`)).map(([,file])=>file);
+      const captured=await this.adapter.collectAssets(result.element,signal);
+      if(step.requireAsset && !captured.files.length && !supplied.length)throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Bitte die Datei prüfen und gegebenenfalls über „Ergebnisdateien ergänzen“ zuordnen.');
+      if(captured.errors.length && !supplied.length)throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
+      const unique=[...new Map([...supplied,...captured.files].map(file=>[file.name,file])).values()];
+      if(signal.aborted)throw new DOMException('Pausiert','AbortError');
+      if(chat!==conversationPath(this.adapter.url()))throw Error('Während der Ergebnisübernahme wurde der Chat gewechselt.');
+      for(const file of unique)assets[`${step.id}/${file.name}`]=file;
+      run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,manuallyAdopted:manual,assetWarnings:captured.errors,completedAt:new Date().toISOString()});
+      run.pending=null;run.chatUrl=this.adapter.url();delete run.error;
+    }
+    async adoptAnswer(run,element,assets={}){
+      if(this.running)throw Error('Bitte den Ablauf zuerst pausieren.');
+      const step=run.flow.steps[run.results.length];
+      if(!run.pending || !step || run.pending.step!==step.id)throw Error('Es gibt keinen passenden offenen Schritt. Es wurde nichts geändert.');
+      const result=this.adapter.selectedAnswer(element),next=structuredClone(run);
+      this.running=true;this.controller=new AbortController();this.onChange(run);
+      try{
+        // Explicitly selected and confirmed by the user. No send or user-marker wait.
+        await this.recordResult(next,step,result,assets,this.controller.signal,true);
+        next.status=next.results.length===next.flow.steps.length?'fertig':'pausiert';
+        await this.save(next);
+        for(const key of Object.keys(run))delete run[key];Object.assign(run,next);
+        this.onChange(run);
+      }finally{this.running=false;this.onChange(run);}
+      return run;
+    }
     async execute(run,selectedFiles,assets={},options={}) {
       if (this.running) throw Error('Der Ablauf läuft bereits.');
       const errors=preflight(run.flow,selectedFiles);
@@ -74,7 +103,12 @@
         for (let i=run.results.length; i<run.flow.steps.length; i++) {
           const step=run.flow.steps[i];
           if (signal.aborted) throw new DOMException('Pausiert','AbortError');
-          if (conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())) throw Error('Der Chat wurde gewechselt. Öffne den ursprünglichen Chat, bevor du fortsetzt.');
+          if (conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())){
+            // Recover old runs that timed out before recording the new /c/ URL.
+            // A matching UUID-marked user message is required; never guess a chat.
+            if(this.adapter.canRebindPending?.(run)){run.chatUrl=this.adapter.url();await this.persist(run);}
+            else throw Error('Der Chat wurde gewechselt oder die Gesprächsadresse konnte noch nicht zugeordnet werden. Öffne den ursprünglichen Chat. Eine fertige Antwort kann über „Vorhandene Antwort übernehmen“ ausdrücklich zugeordnet werden.');
+          }
           let result;
           if (run.pending) {
             if (run.pending.step!==step.id) throw Error('Der offene Schritt stimmt nicht mit dem Fortschritt überein.');
@@ -103,17 +137,7 @@
             await this.persist(run);
             result=await this.adapter.waitForReply(run.pending.marker,signal);
           }
-          const supplied=Object.entries(assets).filter(([key])=>key.startsWith(`${step.id}/`)).map(([,file])=>file);
-          const captured=await this.adapter.collectAssets(result.element,signal);
-          if (step.requireAsset && !captured.files.length && !supplied.length) throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Die Antwort ist vorhanden, aber es wurde keine zugängliche Datei erkannt. Prüfe den Chat. Falls nötig, lade das Original herunter und wähle es über „Ergebnisdateien ergänzen“ aus. Danach fortsetzen.');
-          const combined=[...supplied,...captured.files];
-          // If collection failed, do not silently drop links from the artifact handoff.
-          if (captured.errors.length && !supplied.length) throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
-          const unique=[...new Map(combined.map(file=>[file.name,file])).values()];
-          for (const file of unique) assets[`${step.id}/${file.name}`]=file;
-          run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,assetWarnings:captured.errors,completedAt:new Date().toISOString()});
-          run.pending=null;
-          run.chatUrl=this.adapter.url();
+          await this.recordResult(run,step,result,assets,signal);
           await this.persist(run);
           if(options.singleStep && run.results.length<run.flow.steps.length){run.status='pausiert';await this.persist(run);return run;}
         }

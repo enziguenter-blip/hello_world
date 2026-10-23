@@ -1,8 +1,9 @@
 (() => {
   const ns=globalThis.ProtoScanner;
+  const historySelector=ns.defaultSelectors.user+', '+ns.defaultSelectors.assistant;
   const visible=el=>!!el && el.isConnected && el.getClientRects().length>0 && getComputedStyle(el).visibility!=='hidden' && getComputedStyle(el).display!=='none';
   const enabled=el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true';
-  const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest('[data-message-author-role], [role="dialog"], dialog, [role="search"], [inert]');
+  const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest(historySelector+', [role="dialog"], dialog, [role="search"], [inert]');
   const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
   ns.composerSelector = el => {
     if(!editable(el))throw Error('Bitte das beschreibbare Chat-Eingabefeld auswählen.');
@@ -41,6 +42,7 @@
       this.uploadTimeout=options.uploadTimeout??180000;
       this.replyTimeout=options.replyTimeout??7200000;
       this.composerTimeout=options.composerTimeout??12000;
+      this.userTimeout=options.userTimeout??60000;
       this.notify=options.notify||(()=>{});
     }
     url(){return location.href;}
@@ -65,12 +67,12 @@
       const known=candidates.filter(el=>el.id==='prompt-textarea' || el.dataset.testid==='composer-text-input' || el.closest('#prompt-textarea, [data-testid="composer"], [data-testid="composer-container"], #composer-background'));
       return choose(known.length?known:candidates);
     }
-    diagnose(){
+    diagnose(marker=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
       let selected=null,problem=null;
       const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
       try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
-      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe)};
+      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length}};
     }
     async until(check,timeout,description,signal){
       const end=Date.now()+timeout;
@@ -88,10 +90,10 @@
       const form=composer.closest('form');
       if(form)return form;
       const known=composer.closest('[data-testid="composer"], [data-testid="composer-container"], [data-type="unified-composer"], #composer-background, #chat-composer');
-      if(known && !known.querySelector('[data-message-author-role]'))return known;
+      if(known && !known.querySelector(historySelector))return known;
       let parent=composer.parentElement;
       while(parent && parent!==document.body){
-        if(parent.querySelector(this.selectors.send+', input[type="file"]') && !parent.querySelector('[data-message-author-role]'))return parent;
+        if(parent.querySelector(this.selectors.send+', input[type="file"]') && !parent.querySelector(historySelector))return parent;
         parent=parent.parentElement;
       }
       throw Error('Der Eingabebereich konnte nicht eindeutig erkannt werden. Die Oberfläche muss angepasst werden.');
@@ -169,9 +171,35 @@
       this.prepared=null;
       button.click();
     }
-    user(marker){return this.query('user').find(el=>el.innerText.includes(marker));}
+    messages(role){
+      // A turn may contain a more specific message node. Do not count both.
+      const nodes=[...new Set([...this.query(role),...document.querySelectorAll(ns.defaultSelectors[role])])];
+      return nodes.filter(node=>!nodes.some(other=>other!==node && node.contains(other)));
+    }
+    user(marker){
+      // Rich-text rendering may split lines, hide a suffix or change punctuation.
+      // UUID and step remain mandatory; no positional/last-message guessing.
+      const compact=value=>String(value||'').normalize('NFKC').replace(/[\u00ad\u200b-\u200d\ufeff]/gu,'').replace(/[^\p{L}\p{N}\]]/gu,'').toLowerCase();
+      const expected=compact(marker);
+      if(!expected)return null;
+      return this.messages('user').find(el=>{
+        const content=compact(el.textContent);
+        return content.includes(expected) || (expected.endsWith(']') && content.endsWith(expected.slice(0,-1)));
+      });
+    }
+    canRebindPending(run){
+      const old=new URL(run.chatUrl),current=new URL(location.href);
+      return !!run.pending && old.origin===current.origin && !/\/c\/[^/]+\/?$/.test(old.pathname) && /\/c\/[^/]+\/?$/.test(current.pathname) && !!this.user(run.pending.marker);
+    }
     async waitForUser(marker,signal){
-      return this.until(()=>this.user(marker),60000,'Die gesendete Nachricht wurde nicht im Chat erkannt. Der offene Schritt wird aus Sicherheitsgründen nicht erneut gesendet.',signal);
+      let idleSince=Date.now();
+      this.notify('Prompt gesendet. Warte auf die Zuordnung im Chat; eine laufende Generierung wird abgewartet …');
+      return this.until(()=>{
+        const user=this.user(marker);if(user)return user;
+        if(this.one('stop'))idleSince=Date.now();
+        else if(Date.now()-idleSince>=this.userTimeout)throw Error('Die gesendete Nachricht konnte nicht zugeordnet werden. Der Prompt wird nicht erneut gesendet. Falls die Antwort fertig ist, „Vorhandene Antwort übernehmen“ verwenden; andernfalls abwarten und später fortsetzen.');
+        return false;
+      },this.replyTimeout,'Die Nachricht wurde nicht erkannt. Der offene Schritt bleibt erhalten. Sobald die Antwort fertig ist, kann sie über „Vorhandene Antwort übernehmen“ zugeordnet werden.',signal);
     }
     turn(el){return el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement;}
     text(el){
@@ -179,15 +207,17 @@
       return (blocks.length?blocks.map(b=>b.innerText).join('\n\n'):el.innerText).trim();
     }
     async waitForReply(marker,signal){
-      const user=await this.waitForUser(marker,signal);
+      await this.waitForUser(marker,signal);
       const chat=ns.conversationPath(location.href);
       let previous='',stableSince=0;
       this.notify('Warte auf die vollständige Antwort von ChatGPT …');
       return this.until(()=>{
         if(ns.conversationPath(location.href)!==chat)throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
+        const user=this.user(marker);
+        if(!user){stableSince=0;return false;}
         const following=el=>!!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING);
-        if(this.query('user').some(el=>el!==user && following(el)))throw Error('Nach dem automatischen Prompt wurde eine weitere Nachricht gesendet. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
-        const reply=this.query('assistant').filter(following).at(-1);
+        if(this.messages('user').some(el=>el!==user && following(el)))throw Error('Nach dem automatischen Prompt wurde eine weitere Nachricht gesendet. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
+        const reply=this.messages('assistant').filter(following).at(-1);
         if(!reply || this.one('stop')){stableSince=0;return false;}
         const turn=this.turn(reply);
         const busy=this.query('responseBusy',turn).some(visible);
@@ -199,6 +229,23 @@
         if(signature!==previous){previous=signature;stableSince=Date.now();return false;}
         return Date.now()-stableSince>=this.stableMs ? {element:reply,text:text||'[Bildantwort ohne Begleittext]'} : false;
       },this.replyTimeout,'Die Antwort wurde nicht als vollständig erkannt. Der Lauf bleibt beim offenen Schritt. Prüfe den Chat und gegebenenfalls die Abschluss-Selektoren.',signal);
+    }
+    answerAt(target){
+      if(!(target instanceof Element) || target.closest('form, [contenteditable], textarea, #proto-disput-extension'))return null;
+      if(this.messages('user').some(el=>el===target || el.contains(target)))return null;
+      const specific=this.messages('assistant').find(el=>el===target || el.contains(target));
+      if(specific)return specific;
+      const article=target.closest('article[data-testid^="conversation-turn-"], article[data-turn="assistant"]');
+      if(article && !article.querySelector('[data-turn="user"], [data-message-author-role="user"]'))return article;
+      return null;
+    }
+    selectedAnswer(element){
+      this.assertChatPage();
+      if(this.one('stop'))throw Error('ChatGPT arbeitet noch. Bitte die fertige Antwort abwarten und danach erneut auswählen.');
+      if(!element?.isConnected || this.answerAt(element)!==element)throw Error('Die ausgewählte Antwort ist nicht eindeutig verfügbar. Bitte direkt den fertigen Antworttext anklicken.');
+      const text=this.text(element);
+      if(!text && !element.querySelector('img'))throw Error('Die ausgewählte Antwort ist leer.');
+      return {element,text:text||'[Bildantwort ohne Begleittext]'};
     }
     async collectAssets(reply,signal){
       const files=[],errors=[],seen=new Set();

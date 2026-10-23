@@ -1,7 +1,7 @@
 /* No remote scripts, API calls or account credentials. */
 (() => {
   const ns = globalThis.ProtoScanner = globalThis.ProtoScanner || {};
-  ns.version = '0.1.1';
+  ns.version = '0.1.2';
   const read = 'Lies die beigefügten Unterlagen vollständig. Wenn eine Datei nicht lesbar oder nicht vollständig verfügbar ist, benenne das ausdrücklich. Behaupte keine ungeprüfte Vollständigkeit. ';
   ns.defaultWorkflow = {
     version: 1,
@@ -50,9 +50,9 @@
       'form textarea:not([readonly]):not([disabled])'
     ].join(', '),
     send:'[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"], button[aria-label="Nachricht senden"], button[aria-label="Prompt senden"], button[aria-label="Senden"]',
-    stop:'[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Antwort stoppen"]',
-    assistant:'[data-message-author-role="assistant"]',
-    user:'[data-message-author-role="user"]',
+    stop:'[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Antwort stoppen"], button[aria-label="Generierung stoppen"]',
+    assistant:'[data-message-author-role="assistant"], [data-turn="assistant"], [data-testid="assistant-message"], [data-testid="assistant-turn"]',
+    user:'[data-message-author-role="user"], [data-turn="user"], [data-testid="user-message"], [data-testid="user-turn"]',
     uploadBusy:'[role="progressbar"], progress, [aria-busy="true"], [data-state="uploading"]',
     responseBusy:'[role="progressbar"], progress, [aria-busy="true"], [data-state="loading"]',
     completion:'button[data-testid="copy-turn-action-button"], button[data-testid="good-response-turn-action-button"], button[data-testid="bad-response-turn-action-button"], button[aria-label="Copy"], button[aria-label="Kopieren"], button[aria-label="Antwort kopieren"], button[aria-label="Read aloud"], button[aria-label="Vorlesen"]',
@@ -63,6 +63,8 @@
     // Upgrade the shipped 0.1.0 defaults without dropping custom selectors.
     if(selectors.composer==='#prompt-textarea')selectors.composer=ns.defaultSelectors.composer;
     if(selectors.send==='[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Nachricht senden"]')selectors.send=ns.defaultSelectors.send;
+    for(const role of ['user','assistant'])if(selectors[role]===`[data-message-author-role="${role}"]`)selectors[role]=ns.defaultSelectors[role];
+    if(selectors.stop==='[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Antwort stoppen"]')selectors.stop=ns.defaultSelectors.stop;
     return selectors;
   };
 })();

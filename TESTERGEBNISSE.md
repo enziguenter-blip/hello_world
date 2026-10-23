@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.1**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.2**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -30,7 +30,18 @@ Zusätzliche Prüfungen für die gemeldete Eingabefeld-Störung:
 - Kein Senden, wenn der vorbereitete Prompt zwischenzeitlich verändert wurde.
 - Keine Auswahl eines Editors innerhalb einer alten Assistentennachricht.
 
-Der vollständige Testlauf besteht aus **24 Tests: 23 bestanden, 1 übersprungen**; ein Test prüft fünf Editorvarianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für „gesendete Nachricht nicht erkannt“:
+
+- Alternative Nachrichtenrollen, verschachtelte Rollen ohne Doppelzählung und ein ausgeblendeter Marker mit veränderten Zeilenumbrüchen/Trennzeichen.
+- Laufende Generierung länger als das kurze Nachrichtenerkennungsfenster: kein vorzeitiger Abbruch.
+- Erneut gerenderter Nutzerprompt während des Wartens auf die Antwort.
+- Fortsetzen eines alten offenen Laufs mit zunächst gespeicherter Startseiten-URL: vorhandene Antwort wird übernommen, kein erneutes Senden.
+- Manuelle Übernahme einer vorhandenen Antwort, gefolgt von Schritt 2; Schritt 1 wird nicht erneut gesendet.
+- Bei noch laufender Generierung oder gescheiterter Speicherung bleibt der Schritt offen.
+- Übernahme im Panel durch Anklicken einer fertigen Antwort, auch ohne automatische Erkennung des zugehörigen Nutzerprompts.
+- Keine Verwechslung von Schritt 1 mit Schritt 11; fehlende Nutzerzuordnung führt nicht zum ungeprüften Fortschalten.
+
+Der vollständige Testlauf besteht aus **32 Tests: 31 bestanden, 1 übersprungen**; zwei Tests prüfen mehrere Editor- bzw. Nachrichtenvarianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 

@@ -70,7 +70,7 @@ class BrowserTests(unittest.TestCase):
           window.files=[new File(['Originalquelle'],'quelle.md',{type:'text/markdown'})];
           window.flow={version:1,steps:Array.from({length:steps},(_,i)=>({id:String(i+1),title:'Schritt '+(i+1),files:['quelle.md'],reuse:i?[String(i)]:[],prompt:'Bericht für {{person}}'}))};
           window.run=ProtoScanner.newRun('Testperson',flow,location.href);window.assets={};window.saves=[];
-          window.adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,uploadTimeout:1500,replyTimeout:2000,composerTimeout:1000});
+          window.adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,uploadTimeout:1500,replyTimeout:2000,composerTimeout:1000,userTimeout:60});
           window.runner=new ProtoScanner.Runner(adapter,async r=>saves.push(structuredClone(r)),()=>{});
         }''', {'steps': steps, 'flags': flags})
 
@@ -382,6 +382,153 @@ class BrowserTests(unittest.TestCase):
         result = self.execute()
         self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
         self.assertEqual(len(result['sent']), 1)
+
+    def test_25_message_roles_hidden_marker_and_duplicate_wrappers(self):
+        for variant in ['turn-roles', 'hidden-marker', 'nested-roles']:
+            with self.subTest(variant=variant):
+                self.page.goto(URL)
+                for name in ['workflow.js', 'core.js', 'adapter.js']:
+                    self.page.add_script_tag(path=ROOT / 'extension' / name)
+                self.bootstrap(steps=2)
+                self.page.evaluate(r'''variant=>{
+                  new MutationObserver(records=>{
+                    for(const record of records)for(const node of record.addedNodes){
+                      if(!(node instanceof Element))continue;
+                      for(const role of ['user','assistant']){
+                        const message=node.matches(`[data-message-author-role="${role}"]`)?node:node.querySelector(`[data-message-author-role="${role}"]`);
+                        if(!message)continue;
+                        if(variant==='turn-roles'){
+                          const turn=message.closest('article')||message;turn.dataset.turn=role;message.removeAttribute('data-message-author-role');
+                        }
+                        if(variant==='nested-roles'){
+                          let turn=message.closest('article');
+                          if(!turn){turn=document.createElement('article');message.replaceWith(turn);turn.append(message);}
+                          turn.dataset.turn=role;
+                        }
+                        if(variant==='hidden-marker' && role==='user' && !message.dataset.reformatted){
+                          message.dataset.reformatted='true';const split=message.textContent.lastIndexOf('[Proto-Disput');
+                          const marker=message.textContent.slice(split).replaceAll('-', '\u2011').replaceAll(' / ', '\n / \n');
+                          const hidden=document.createElement('span');hidden.hidden=true;hidden.textContent=marker;
+                          message.replaceChildren(document.createTextNode(message.textContent.slice(0,split)),hidden);
+                        }
+                      }
+                    }
+                  }).observe(document.querySelector('#messages'),{childList:true});
+                }''', variant)
+                result = self.execute()
+                self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+                self.assertEqual(len(result['sent']), 2)
+                self.assertEqual(self.page.evaluate('adapter.messages("user").length'), 2)
+
+    def test_26_active_generation_extends_user_detection_window(self):
+        self.bootstrap(steps=1)
+        result = self.page.evaluate('''async()=>{
+          adapter.userTimeout=30;
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          const user=document.querySelector('[data-message-author-role="user"]');user.removeAttribute('data-message-author-role');
+          setTimeout(()=>user.dataset.turn='user',150);
+          await execution;return {run,sent};
+        }''')
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 1)
+
+    def test_27_reacquires_user_node_after_rerender(self):
+        self.bootstrap(steps=1)
+        result = self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          setTimeout(()=>{const user=document.querySelector('[data-message-author-role="user"]');user.replaceWith(user.cloneNode(true));},100);
+          await execution;return {run,sent};
+        }''')
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 1)
+
+    def seed_pending_answer(self):
+        self.page.evaluate('''()=>{
+          run.pending={step:'1',marker:ProtoScanner.markerFor(run,flow.steps[0]),preparedAt:new Date().toISOString()};run.status='angehalten';
+          const user=document.createElement('div');user.dataset.messageAuthorRole='user';user.textContent=run.pending.marker;
+          const article=document.createElement('article');article.dataset.testid='conversation-turn-1';
+          const answer=document.createElement('div');answer.dataset.messageAuthorRole='assistant';
+          const markdown=document.createElement('div');markdown.className='markdown';markdown.textContent='OK. Alle sechs Dateien sind zugänglich. Zielperson Testperson.';
+          answer.append(markdown);article.append(answer);const copy=document.createElement('button');copy.dataset.testid='copy-turn-action-button';article.append(copy);
+          document.querySelector('#messages').append(user,article);window.existingAnswer=answer;
+        }''')
+
+    def test_28_resume_legacy_root_url_uses_existing_message(self):
+        self.bootstrap(steps=1)
+        self.seed_pending_answer()
+        self.page.evaluate("run.chatUrl='https://chatgpt.com/'")
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(result['sent'], [])
+        self.assertEqual(len(result['run']['results']), 1)
+
+    def test_29_manual_adoption_then_next_step_without_resend(self):
+        self.bootstrap(steps=2)
+        self.seed_pending_answer()
+        result = self.page.evaluate('''async()=>{
+          document.querySelector('[data-message-author-role="user"]').removeAttribute('data-message-author-role');
+          run.chatUrl='https://chatgpt.com/';
+          await runner.adoptAnswer(run,existingAnswer,assets);const adopted=structuredClone(run);
+          await runner.execute(run,files,assets);return {adopted,run,sent};
+        }''')
+        self.assertEqual(result['adopted']['status'], 'pausiert')
+        self.assertTrue(result['adopted']['results'][0]['manuallyAdopted'])
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 1)
+        self.assertIn('Schritt 2]', result['sent'][0]['prompt'])
+        self.assertIn('Alle sechs Dateien', '\n'.join(result['sent'][0]['text']))
+
+    def test_30_adoption_preserves_pending_on_busy_or_storage_failure(self):
+        self.bootstrap(steps=1)
+        self.seed_pending_answer()
+        result = self.page.evaluate('''async()=>{
+          const busy=document.createElement('button');busy.dataset.testid='stop-button';busy.textContent='Stop';document.body.append(busy);
+          let busyError='';try{await runner.adoptAnswer(run,existingAnswer,assets);}catch(e){busyError=e.message;}
+          busy.remove();runner.save=async()=>{throw Error('Quota');};
+          let saveError='';try{await runner.adoptAnswer(run,existingAnswer,assets);}catch(e){saveError=e.message;}
+          return {run,busyError,saveError,sent};
+        }''')
+        self.assertIn('arbeitet noch', result['busyError'])
+        self.assertEqual(result['saveError'], 'Quota')
+        self.assertEqual(result['run']['results'], [])
+        self.assertIsNotNone(result['run']['pending'])
+        self.assertEqual(result['sent'], [])
+
+    def test_31_panel_adopts_existing_answer_without_upload_or_send(self):
+        self.bootstrap(steps=2)
+        self.seed_pending_answer()
+        self.page.evaluate('''()=>{
+          document.querySelector('[data-message-author-role="user"]').removeAttribute('data-message-author-role');
+          existingAnswer.removeAttribute('data-message-author-role');
+          window.browser={storage:{local:{get:async()=>({latestRun:structuredClone(run)}),set:async value=>{window.savedByPanel=value;}}}};
+        }''')
+        self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
+        self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
+        self.page.get_by_role('button', name='Vorhandene Antwort übernehmen', exact=True).click()
+        self.page.once('dialog', lambda dialog: dialog.accept())
+        self.page.locator('#messages .markdown').click()
+        self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('1/2 abgeschlossen')")
+        self.assertEqual(self.page.evaluate('sent.length'), 0)
+        self.assertTrue(self.page.evaluate('savedByPanel.latestRun.results[0].manuallyAdopted'))
+        self.assertEqual(self.page.evaluate('savedByPanel.latestRun.pending'), None)
+
+    def test_32_marker_precision_and_no_guessing_missing_user(self):
+        self.bootstrap(steps=1)
+        self.seed_pending_answer()
+        result = self.page.evaluate('''async()=>{
+          const user=document.querySelector('[data-message-author-role="user"]');user.textContent=ProtoScanner.markerFor(run,{id:'11'});
+          const wrongStepMatched=!!adapter.user(run.pending.marker);adapter.replyTimeout=200;
+          await runner.execute(run,files,assets);
+          return {run,sent,wrongStepMatched,report:adapter.diagnose(run.pending.marker)};
+        }''')
+        self.assertFalse(result['wrongStepMatched'])
+        self.assertEqual(result['run']['status'], 'angehalten')
+        self.assertEqual(result['run']['results'], [])
+        self.assertEqual(result['sent'], [])
+        self.assertFalse(result['report']['messages']['openPromptRecognized'])
+        self.assertNotIn(result['run']['id'], json.dumps(result['report']))
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.1**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.2**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
@@ -43,13 +43,29 @@ Version 0.1.0 suchte ausschließlich nach `#prompt-textarea`. Meldet sie „Chat
 1. Das neue ZIP für deinen Browser von GitHub herunterladen und entpacken. Falls Chrome beim Download `(1)` an den ZIP-Dateinamen anhängt, ist das unproblematisch.
 2. Die entpackten Erweiterungsdateien im **bisher verwendeten Erweiterungsordner** ersetzen. Nicht eine zweite Kopie der Erweiterung parallel installieren.
 3. In Chrome `chrome://extensions` öffnen und auf der Karte **Proto-Disput · Browserablauf** den kreisförmigen **Neu laden**-Pfeil anklicken. Bei Firefox über `about:debugging#/runtime/this-firefox` das temporäre Add-on neu laden.
-4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.1** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
+4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.2** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
 5. **Oberfläche prüfen** erkennt das Nachrichtenfeld, ohne etwas hochzuladen oder zu senden. Erkennt die Automatik es nicht eindeutig, **Chat-Eingabefeld auswählen** drücken und direkt in das normale Nachrichtenfeld von ChatGPT klicken. Das Scanner-Panel blendet sich während der Auswahl aus. Mit Esc lässt sich abbrechen. Die Zuordnung wird lokal gespeichert.
 6. **Nächsten Schritt testen** anklicken. Ein Lauf mit 0/11 abgeschlossenen Schritten und ohne gesendeten Prompt kann bei Schritt 1 fortgesetzt werden. Es ist kein neuer Lauf nötig, solange Person und Quellen dieselben sind.
 
-Version 0.1.1 unterstützt sichtbare Textareas, ProseMirror-/Lexical-Editoren, Nachrichtenfelder in bekannten Composer-Containern und verzögertes Laden. Verborgene alte Felder und Editoren innerhalb vergangener Nachrichten werden ausgeschlossen. Bei mehreren gleichwertigen Kandidaten hält die Erweiterung an. Gespeicherte Standardselektoren aus 0.1.0 werden aktualisiert; eigene angepasste Selektoren bleiben erhalten.
+Seit Version 0.1.1 werden sichtbare Textareas, ProseMirror-/Lexical-Editoren, Nachrichtenfelder in bekannten Composer-Containern und verzögertes Laden unterstützt. Verborgene alte Felder und Editoren innerhalb vergangener Nachrichten werden ausgeschlossen. Bei mehreren gleichwertigen Kandidaten hält die Erweiterung an. Gespeicherte Standardselektoren aus 0.1.0 werden aktualisiert; eigene angepasste Selektoren bleiben erhalten.
 
 Falls das Problem bleibt: **Oberfläche prüfen** anklicken und den angezeigten Diagnosetext kopieren. Er enthält Feldkennungen und Zustände, keine Nachrichten, Quelldateinamen oder Datei-/Gesprächsinhalte. Ein Screenshot oder der Gesprächsverlauf ist dafür nicht erforderlich. Die Erkennung ist weiterhin nicht gegen ein angemeldetes ChatGPT-Konto in dieser Cloud verifiziert.
+
+## Prompt gesendet, aber nicht erkannt / fertige Antwort übernehmen
+
+Die Meldung „Die gesendete Nachricht wurde nicht im Chat erkannt“ bedeutet nicht, dass ChatGPT die Arbeit abgebrochen hat. Die bisherige Minute betraf die Zuordnung des eigenen Nutzerprompts im sichtbaren Verlauf. Ein Scan von beispielsweise fünf Minuten darf weiterlaufen. Einen bereits gesendeten Prompt nicht manuell wiederholen und keinen neuen Lauf anlegen, nur weil die Erweiterung ihn nicht erkennt.
+
+Version 0.1.2 erkennt weitere Nachrichtenkennungen und berücksichtigt bei der eindeutigen Schrittmarkierung auch ausgeblendeten Text, andere Zeilenumbrüche und Trennzeichen. Solange ein aktiver Generierungszustand erkannt wird, endet die Nachrichtensuche nicht wegen der bisherigen Minute. Bleibt die Zuordnung nach Ende der Generierung unmöglich, hält sie weiterhin an. Es werden keine Ergebnisse nach ihrer Position allein angenommen. Die Bindung an einen Chat, dessen Adresse erst nach dem ersten Senden entstand, kann mit einer eindeutig passenden Schrittmarkierung wiederhergestellt werden.
+
+Für einen bereits angehaltenen Schritt mit fertiger Antwort:
+
+1. Im ursprünglichen Chat bleiben und die fertige Antwort abwarten.
+2. Version **0.1.2** installieren/neu laden wie oben beschrieben. Den Tab mit F5 neu laden und dieselben Quellen erneut auswählen. Der offene Schritt bleibt bei derselben Erweiterungsinstallation gespeichert.
+3. **Vorhandene Antwort übernehmen** anklicken. Das Panel blendet sich aus. Direkt in den fertigen **Antworttext von ChatGPT** klicken, z. B. „OK. Alle sechs …“. Die angezeigte Zuordnung zu Person und Schritt prüfen und bestätigen.
+4. Der Zähler steigt z. B. von **0/11 auf 1/11**. Der Bericht wird mit `manuallyAdopted: true` im Laufprotokoll gespeichert; dabei wird kein Prompt gesendet und kein Quelldokument erneut hochgeladen. Diese ausdrückliche Bestätigung ersetzt die automatische Nachrichtenzuordnung, nicht die fachliche Prüfung der Antwort. Erforderliche Original-Ergebnisdateien werden weiterhin geprüft.
+5. **Ablauf starten / fortsetzen** beginnt beim nächsten Schritt. Alternativ lässt **Nächsten Schritt testen** nur den nächsten Schritt laufen.
+
+Die Übernahme ist nur bei einem offenen Schritt verfügbar. Während ChatGPT noch generiert, wird sie abgewiesen. Ein Klick auf **Ablauf starten / fortsetzen** ohne manuelle Übernahme versucht zunächst, den offenen Schritt automatisch wiederzuerkennen; er sendet ihn nicht erneut. **Oberfläche prüfen** enthält jetzt zusätzlich Nachrichtenzähler und die Information, ob der offene Prompt erkannt wurde, ohne die Markierung oder die Nachrichtentexte auszugeben.
 
 ## Übergabe und Wiederverwendung von Ergebnissen
 
@@ -63,7 +79,7 @@ Falls das Problem bleibt: **Oberfläche prüfen** anklicken und den angezeigten 
 
 ## Wann beginnt der nächste Schritt?
 
-Es gibt keinen festen Timer für einen Scan. Die Erweiterung verlangt einen sichtbaren eigenen Nutzerprompt, eine nachfolgende Assistentenantwort, ein erkanntes Abschluss-Bedienelement, keinen erkannten laufenden Generierungszustand und einen kurzzeitig stabilen Antwortinhalt. Für Bilder wird zusätzlich deren Ladezustand geprüft. Nach zwei Stunden ohne erkannten Abschluss wird angehalten; dies ist eine Sicherheitsgrenze, kein Auslöser für den nächsten Schritt. Uploads haben eine separate Grenze von drei Minuten. Solche Oberflächensignale ersetzen keine offizielle Fertigstellungs-Schnittstelle und müssen im echten Chat erprobt werden.
+Es gibt keinen festen Timer für einen Scan. Die automatische Erkennung verlangt einen eindeutig markierten eigenen Nutzerprompt im Seiteninhalt, eine nachfolgende Assistentenantwort, ein erkanntes Abschluss-Bedienelement, keinen erkannten laufenden Generierungszustand und einen kurzzeitig stabilen Antwortinhalt. Für Bilder wird zusätzlich deren Ladezustand geprüft. Nachrichtensuche und Antwortprüfung haben jeweils eine Höchstgrenze von zwei Stunden. Diese Grenzen lösen keinen Folgeschritt aus. Uploads haben eine separate Grenze von drei Minuten. Bei ausdrücklich manuell übernommener Antwort bestätigt der Nutzer die Fertigstellung. Solche Oberflächensignale ersetzen keine offizielle Fertigstellungs-Schnittstelle und müssen im echten Chat erprobt werden.
 
 Bei Pause kann ChatGPT weiterarbeiten; nur die Ablaufsteuerung wird unterbrochen. Beim Fortsetzen eines bereits gesendeten Schritts wird dessen Antwort gesucht, **nicht erneut gesendet**. Ist das Senden unklar, wird angehalten. Nicht ungeprüft einen neuen Lauf starten. Schlägt die Vorbereitung vor dem Senden fehl, müssen eventuell liegen gebliebene Anhänge und der vorbereitete Prompt zuerst aus dem Eingabefeld entfernt werden.
 

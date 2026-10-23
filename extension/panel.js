@@ -17,6 +17,7 @@
     <div id="files" class="muted">Noch keine Quelldateien ausgewählt.</div>
     <div class="row"><button id="check" type="button">Dateien prüfen</button><button id="next" type="button">Nächsten Schritt testen</button></div>
     <div class="row"><button id="pickComposer" type="button">Chat-Eingabefeld auswählen</button><button id="diagnose" type="button">Oberfläche prüfen</button></div>
+    <button id="adoptAnswer" type="button" disabled>Vorhandene Antwort übernehmen</button>
     <div id="diagnostics" hidden><p class="muted">Diese Diagnose enthält Feldkennungen und Zustände, keine Gesprächsinhalte oder Dateinamen. Bei Problemen kannst du den Text kopieren und weitergeben.</p><textarea id="diagnosticText" readonly aria-label="Diagnose ohne Gesprächsinhalte"></textarea></div>
     <div class="row"><button id="start" class="primary" type="button">Ablauf starten / fortsetzen</button><button id="pause" type="button" disabled>Pause</button></div>
     <p class="muted">ChatGPT kann während einer Pause weiterarbeiten. Während des Ablaufs im selben Chat bleiben und keine zusätzlichen Nachrichten senden. Dateien, Prompts und Folgeanfragen werden über dein Konto an ChatGPT gesendet.</p>
@@ -56,6 +57,7 @@
   function paint(){
     const busy=!!runner?.running || picking;
     for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','pickComposer','diagnose'])$(id).disabled=busy;
+    $('adoptAnswer').disabled=busy || !run?.pending;
     $('person').disabled=busy || !!run;
     $('pause').disabled=!runner?.running;
     if(run){
@@ -68,7 +70,7 @@
     for(const step of flow.steps){
       const li=document.createElement('li');
       const result=run?.results.find(r=>r.step===step.id);
-      li.textContent=`${result?'✓':run?.pending?.step===step.id?'…':'○'} ${step.title}${result?.assetNames?.length?' · '+result.assetNames.length+' Datei(en)':''}`;
+      li.textContent=`${result?'✓':run?.pending?.step===step.id?'…':'○'} ${step.title}${result?.manuallyAdopted?' · manuell übernommen':''}${result?.assetNames?.length?' · '+result.assetNames.length+' Datei(en)':''}`;
       $('steps').append(li);
       if(result || run?.pending?.step===step.id){const option=document.createElement('option');option.value=step.id;option.textContent=`${step.id}: ${step.title}`;$('assetStep').append(option);}
     }
@@ -83,16 +85,14 @@
   const toggle=open=>{$('panel').hidden=!open;$('toggle').setAttribute('aria-expanded',String(open));};
   $('toggle').onclick=()=>{if(cancelPick)cancelPick();else toggle($('panel').hidden);};$('close').onclick=()=>toggle(false);
   $('diagnose').onclick=guard(async()=>{
-    const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose();
+    const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose(run?.pending?.marker);
     $('diagnostics').hidden=false;$('diagnosticText').value=JSON.stringify(report,null,2);
     $('status').textContent=report.selected?'Das Nachrichtenfeld wurde erkannt. Es wurde nichts gesendet.':'Kein eindeutiges Nachrichtenfeld erkannt. Bitte „Chat-Eingabefeld auswählen“ verwenden.';
     if(report.problem)throw Error(report.problem);
   });
-  $('pickComposer').onclick=guard(async()=>{
-    if(runner?.running)return;
-    new ns.DOMAdapter(selectors).assertChatPage();
+  function pickFromPage(instruction,match,accept){
     picking=true;paint();toggle(false);
-    $('toggle').textContent='Jetzt ins Nachrichtenfeld klicken · Esc zum Abbrechen';
+    $('toggle').textContent=instruction+' · Esc zum Abbrechen';
     let timer;
     const cleanup=()=>{
       document.removeEventListener('click',pick,true);document.removeEventListener('keydown',key,true);
@@ -103,19 +103,41 @@
       if(event.composedPath().includes(host))return;
       event.preventDefault();event.stopImmediatePropagation();
       const target=event.composedPath()[0];
-      const el=target instanceof Element?target.closest('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'):null;
-      if(!el){$('toggle').textContent='Bitte direkt ins Nachrichtenfeld klicken · Esc zum Abbrechen';return;}
       try{
-        const selector=ns.composerSelector(el);
+        const el=target instanceof Element?match(target):null;
+        if(!el){$('toggle').textContent=instruction+' · Esc zum Abbrechen';return;}
         document.removeEventListener('click',pick,true);
-        selectors={...selectors,composer:selector};ns.selectedComposer=el;
-        await storage.set({selectors});$('selectors').value=JSON.stringify(selectors,null,2);
-        cleanup();$('error').textContent='';$('status').textContent='Nachrichtenfeld zugeordnet. Bitte „Nächsten Schritt testen“ wählen.';
+        clearTimeout(timer);document.removeEventListener('keydown',key,true);cancelPick=null;
+        const message=await accept(el);
+        cleanup();$('error').textContent='';if(message)$('status').textContent=message;
       }catch(e){cleanup();error(e);}
     };
     cancelPick=cleanup;
     document.addEventListener('click',pick,true);document.addEventListener('keydown',key,true);
     timer=setTimeout(()=>{cleanup();$('status').textContent='Feldauswahl nach 60 Sekunden beendet. Du kannst sie erneut starten.';},60000);
+  }
+  $('pickComposer').onclick=guard(async()=>{
+    if(runner?.running)return;
+    new ns.DOMAdapter(selectors).assertChatPage();
+    pickFromPage('Jetzt ins Nachrichtenfeld klicken',target=>target.closest('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'),async el=>{
+      const selector=ns.composerSelector(el);
+      selectors={...selectors,composer:selector};ns.selectedComposer=el;
+      await storage.set({selectors});$('selectors').value=JSON.stringify(selectors,null,2);
+      return 'Nachrichtenfeld zugeordnet. Bitte „Nächsten Schritt testen“ wählen.';
+    });
+  });
+  $('adoptAnswer').onclick=guard(async()=>{
+    if(runner?.running || !run?.pending)return;
+    const adapter=new ns.DOMAdapter(selectors);
+    adapter.assertChatPage();
+    if(adapter.one('stop'))throw Error('ChatGPT arbeitet noch. Bitte auf die fertige Antwort warten.');
+    pickFromPage('Jetzt den fertigen Antworttext von ChatGPT anklicken',target=>adapter.answerAt(target),async el=>{
+      adapter.selectedAnswer(el);
+      if(!confirm(`Die ausgewählte fertige Antwort für Schritt ${run.pending.step} (${run.person}) übernehmen? Der offene Prompt wird nicht erneut gesendet. Bitte Zuordnung und Vollständigkeit der Antwort prüfen.`))return 'Übernahme abgebrochen. Der offene Schritt bleibt erhalten.';
+      runner=new ns.Runner(adapter,async value=>storage.set({latestRun:JSON.parse(JSON.stringify(value))}),paint);
+      await runner.adoptAnswer(run,el,assets);
+      return `Antwort übernommen · ${run.results.length}/${run.flow.steps.length} abgeschlossen. Mit „Ablauf starten / fortsetzen“ geht es beim nächsten Schritt weiter.`;
+    });
   });
   $('check').onclick=guard(async()=>{
     const errors=ns.preflight(run?.flow||config(),files);
