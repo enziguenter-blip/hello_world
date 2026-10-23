@@ -1,7 +1,7 @@
 /* No remote scripts, API calls or account credentials. */
 (() => {
   const ns = globalThis.ProtoScanner = globalThis.ProtoScanner || {};
-  ns.version = '0.1.3';
+  ns.version = '0.1.4';
   const read = 'Lies die beigefügten Unterlagen vollständig. Wenn eine Datei nicht lesbar oder nicht vollständig verfügbar ist, benenne das ausdrücklich. Behaupte keine ungeprüfte Vollständigkeit. ';
   ns.defaultWorkflow = {
     version: 1,
@@ -12,7 +12,7 @@
         'gruppe_PROTO_DISPUT_SCANNER_GRUPPEN_MASTER_PROMPT_V1.5.4_FINAL(20261015-130612).md',
         'manual_PROTO_DISPUT_SCANNER_CODIER_KALIBRIERUNGSMANUAL_V1.5.4_FINAL(20261015-130615).md',
         'sonamatische_kommunikation_v1.1.pdf'
-      ], reuse:[], prompt:read+'Bestätige anschließend mit OK, sofern alle sechs Dateien vollständig lesbar waren. Die Zielperson für den folgenden Ablauf ist {{person}}.'},
+      ], reuse:[], acknowledgement:{type:'sources-readable',fileCount:6}, prompt:read+'Bestätige anschließend mit OK, sofern alle sechs Dateien vollständig lesbar waren. Die Zielperson für den folgenden Ablauf ist {{person}}.'},
       {id:'2', title:'Individuelles Dojo', files:[
         '01_Kanonische_Dojo_Paedagogik_V1.5.4_Prinzipien_operationalisiert(3).md',
         '02_Individuelles_Dojo_V1.5.4_Prinzipien_operationalisiert(3).md'

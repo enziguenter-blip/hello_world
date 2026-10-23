@@ -1,6 +1,6 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.3**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.4**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
@@ -30,11 +30,23 @@ Ein temporäres Firefox-Add-on wird beim Beenden des Browsers entfernt. Danach m
 3. Über **Quelldateien einmal auswählen** alle benötigten Dateien auswählen; alternativ einen Ordner auswählen. Bei Ordnerwahl keine unnötigen Dateien einbeziehen. Die Liste wird angezeigt.
 4. **Dateien prüfen** anklicken. Die Standardkonfiguration verlangt die Originaldateinamen aus der Prozessbeschreibung. Abweichende Namen unter **Dateizuordnung und Prompts bearbeiten** anpassen. Doppelte Basenamen benötigen eindeutige relative Pfade inklusive ausgewähltem Hauptordner.
 5. Zielperson eintragen. Die früher fest eingetragenen Zielnamen Marlies und Manuel werden in den Arbeitsaufträgen durch diese Person ersetzt. Namen in Beispiel-Dateinamen bleiben erhalten.
-6. Beim ersten Einsatz **Nächsten Schritt testen** wählen. Prüfen, ob alle Anhänge angekommen sind, der Prompt genau einmal gesendet wurde und die Antwort vollständig ist. Upload bedeutet nicht, dass das LLM die Quelle vollständig verarbeitet hat.
-7. Anschließend **Ablauf starten / fortsetzen**. Die Erweiterung arbeitet die verbleibenden Schritte ab, solange sie die Oberfläche und die Ergebnisse eindeutig erkennen kann. Tab und Browser geöffnet lassen, Ruhezustand vermeiden. Währenddessen nicht in andere Chats navigieren oder selbst weitere Nachrichten senden.
+6. **Automatisch starten / fortsetzen** drücken. Nach einer fertig erkannten Antwort werden die Ergebnisse gespeichert und die Dateien des nächsten Schritts hochgeladen. Die OK-Antwort aus Schritt 1 muss nicht angeklickt oder zusätzlich bestätigt werden.
+7. Tab und Browser geöffnet lassen, Ruhezustand vermeiden. Währenddessen nicht in andere Chats navigieren oder selbst weitere Nachrichten senden. Bei einem erkannten Fehler hält der Ablauf mit erhaltenem Fortschritt an.
 8. Abschließend **Ergebnisse als ZIP** herunterladen. Der Download erfolgt über diesen Knopf, damit der Browser ihn nicht als unerwünschten automatischen Download blockiert.
 
 Die Konfiguration bleibt lokal gespeichert. Die Quelldateien werden nur für die laufende Seite im Arbeitsspeicher gehalten: Nach einem Neuladen müssen dieselben Dateien erneut ausgewählt werden. SHA-256-Prüfsummen verhindern das unbemerkte Fortsetzen mit anderen Quellinhalten. Für andere Gesprächsprotokolle und Vorlagen die Dateizuordnung aktualisieren und einen neuen Lauf anlegen.
+
+**Diagnose und manuelle Reparatur** ist ein eingeklappter Bereich für Ausnahmefälle. Dort liegt auch **Nächsten Schritt testen**: Dieser ausdrücklich gewählte Testmodus pausiert nach einem Schritt. Er gehört nicht zum automatischen Standardablauf.
+
+## Automatisch von der OK-Antwort zu Schritt 2
+
+Version **0.1.4** verwendet die fertige OK-Antwort als Abschluss des ersten Schritts. Bei der üblichen Zuordnung des eigenen Prompts ist kein zusätzlicher Klick nötig. Falls die Markierung des Nutzerprompts in der Oberfläche nicht erkannt wird, kann die Erweiterung die eindeutige Quellenbestätigung des ersten Schritts automatisch erkennen, beispielsweise:
+
+> OK. Alle sechs Dateien sind vollständig zugänglich und lesbar. Zielperson für den folgenden Ablauf: Günter.
+
+Der Name wird mit der ausgewählten Zielperson verglichen. Die zusätzliche Erkennung verlangt die passende Dateianzahl, die positive Lesbarkeitsbestätigung und den passenden Namen. Sie wartet weiterhin auf das Ende der Generierung und ein erkanntes Abschluss-Bedienelement. Die Antwort wird gespeichert und **Schritt 2 startet automatisch**, ohne Freigabedialog. Das bestätigt die Meldung des LLMs, nicht unabhängig dessen tatsächliches vollständiges Lesen.
+
+Vor dem Senden merkt sich die Erweiterung bereits vorhandene Antworten, damit eine alte OK-Antwort nicht für einen neuen Scan verwendet wird. Ein angehaltener erster Schritt aus einer älteren Version kann ohne erneutes Senden fortgesetzt werden, wenn eine eindeutige passende erste Bestätigung im ursprünglichen Chat vorhanden ist. Dazu nach dem Update im selben Erweiterungsordner und dem Neuladen des Tabs dieselben Dateien auswählen und **Automatisch starten / fortsetzen** drücken. Gespeicherte Standardabläufe werden berücksichtigt; die bestehenden Prompts werden nicht umgeschrieben. Bei dieser zusätzlichen Erkennung wird mit widersprüchlichen oder mehrdeutigen Bestätigungen nicht ungeprüft weitergeschaltet.
 
 ## Aktualisierung von 0.1.0 / Eingabefeld nicht gefunden
 
@@ -43,9 +55,9 @@ Version 0.1.0 suchte ausschließlich nach `#prompt-textarea`. Meldet sie „Chat
 1. Das neue ZIP für deinen Browser von GitHub herunterladen und entpacken. Falls Chrome beim Download `(1)` an den ZIP-Dateinamen anhängt, ist das unproblematisch.
 2. Die entpackten Erweiterungsdateien im **bisher verwendeten Erweiterungsordner** ersetzen. Nicht eine zweite Kopie der Erweiterung parallel installieren.
 3. In Chrome `chrome://extensions` öffnen und auf der Karte **Proto-Disput · Browserablauf** den kreisförmigen **Neu laden**-Pfeil anklicken. Bei Firefox über `about:debugging#/runtime/this-firefox` das temporäre Add-on neu laden.
-4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.3** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
+4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.4** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
 5. **Oberfläche prüfen** erkennt das Nachrichtenfeld, ohne etwas hochzuladen oder zu senden. Erkennt die Automatik es nicht eindeutig, **Chat-Eingabefeld auswählen** drücken und direkt in das normale Nachrichtenfeld von ChatGPT klicken. Das Scanner-Panel blendet sich während der Auswahl aus. Mit Esc lässt sich abbrechen. Die Zuordnung wird lokal gespeichert.
-6. **Nächsten Schritt testen** anklicken. Ein Lauf mit 0/11 abgeschlossenen Schritten und ohne gesendeten Prompt kann bei Schritt 1 fortgesetzt werden. Es ist kein neuer Lauf nötig, solange Person und Quellen dieselben sind.
+6. **Automatisch starten / fortsetzen** anklicken. Ein bereits gesendeter offener Schritt wird nicht erneut gesendet. Es ist kein neuer Lauf nötig, solange Person und Quellen dieselben sind.
 
 Seit Version 0.1.1 werden sichtbare Textareas, ProseMirror-/Lexical-Editoren, Nachrichtenfelder in bekannten Composer-Containern und verzögertes Laden unterstützt. Verborgene alte Felder und Editoren innerhalb vergangener Nachrichten werden ausgeschlossen. Bei mehreren gleichwertigen Kandidaten hält die Erweiterung an. Gespeicherte Standardselektoren aus 0.1.0 werden aktualisiert; eigene angepasste Selektoren bleiben erhalten.
 
@@ -59,15 +71,15 @@ Seit Version 0.1.2 werden weitere Nachrichtenkennungen erkannt; die eindeutige S
 
 Version **0.1.3** behandelt das Anlegen einer Gesprächsadresse nach dem ersten Senden gesondert: Der Übergang von der Startseite oder einem neuen GPT-Chat zu `/c/…` darf erfolgen, wenn ein Schritt bereits versucht oder abgeschlossen wurde. Das gilt auch, wenn ChatGPT die Adresse erst während der Antwort oder nach deren Speicherung setzt. Diese Adressbindung allein bestätigt keine Antwort; dafür ist weiterhin eine eindeutige automatische Zuordnung oder die ausdrückliche Bestätigung des Nutzers erforderlich. Ein Wechsel zwischen zwei verschiedenen bestehenden Gesprächs-IDs bleibt ein Grund zum Anhalten. Die Diagnose zeigt die Adresstypen, aber keine URLs oder Gesprächs-IDs.
 
-Für einen bereits angehaltenen Schritt mit fertiger Antwort:
+Manuelle Reparatur für Ausnahmefälle, in denen eine Antwort weiterhin nicht automatisch zugeordnet werden kann:
 
 1. Im ursprünglichen Chat bleiben und die fertige Antwort abwarten.
-2. Version **0.1.3** installieren/neu laden wie oben beschrieben. Den Tab mit F5 neu laden und dieselben Quellen erneut auswählen. Der offene Schritt bleibt bei derselben Erweiterungsinstallation gespeichert.
-3. **Vorhandene Antwort übernehmen** anklicken. Im Panel erscheinen Vorschauen der zuletzt erkannten Antworten. Unter der passenden fertigen Antwort (z. B. „OK. Alle sechs …“) **Diese Antwort übernehmen** anklicken. Die angezeigte Zuordnung zu Person und Schritt prüfen und bestätigen. Gespeichert wird der vollständige Antworttext, nicht nur der Vorschauauszug.
+2. Im Bereich **Diagnose und manuelle Reparatur** zuerst die Diagnose prüfen. Diese Reparatur ist keine zusätzliche Freigabe im normalen Prozess.
+3. Falls ausdrücklich eine manuelle Zuordnung gewünscht ist, **Vorhandene Antwort übernehmen** anklicken. Im Panel erscheinen Vorschauen der zuletzt erkannten Antworten. Unter der passenden fertigen Antwort **Diese Antwort übernehmen** anklicken. Die angezeigte Zuordnung zu Person und Schritt prüfen und bestätigen. Gespeichert wird der vollständige Antworttext, nicht nur der Vorschauauszug.
 4. Der Zähler steigt z. B. von **0/11 auf 1/11**. Der Bericht wird mit `manuallyAdopted: true` im Laufprotokoll gespeichert; dabei wird kein Prompt gesendet und kein Quelldokument erneut hochgeladen. Diese ausdrückliche Bestätigung ersetzt die automatische Nachrichtenzuordnung, nicht die fachliche Prüfung der Antwort. Erforderliche Original-Ergebnisdateien werden weiterhin geprüft.
-5. **Ablauf starten / fortsetzen** beginnt beim nächsten Schritt. Alternativ lässt **Nächsten Schritt testen** nur den nächsten Schritt laufen.
+5. **Automatisch starten / fortsetzen** beginnt beim nächsten Schritt. Alternativ lässt der ausdrücklich gewählte Testmodus **Nächsten Schritt testen** nur den nächsten Schritt laufen.
 
-Die Übernahme ist nur bei einem offenen Schritt verfügbar. Während ChatGPT noch generiert, wird sie abgewiesen. Ein Klick auf **Ablauf starten / fortsetzen** ohne manuelle Übernahme versucht zunächst, den offenen Schritt automatisch wiederzuerkennen; er sendet ihn nicht erneut. **Oberfläche prüfen** enthält jetzt zusätzlich Nachrichtenzähler und die Information, ob der offene Prompt erkannt wurde, ohne die Markierung oder die Nachrichtentexte auszugeben.
+Die manuelle Übernahme ist nur bei einem offenen Schritt verfügbar. Während ChatGPT noch generiert, wird sie abgewiesen. **Automatisch starten / fortsetzen** versucht zunächst, den offenen Schritt automatisch wiederzuerkennen; er sendet ihn nicht erneut. **Oberfläche prüfen** enthält Nachrichtenzähler und die Information, ob der offene Prompt erkannt wurde, ohne die Markierung oder die Nachrichtentexte auszugeben.
 
 Falls die passende Antwort nicht als Vorschau erscheint: **Keine passende Vorschau?** öffnen und **Antwort direkt im Chat auswählen** wählen. Erst dann blendet sich das Panel aus. Direkt auf den fertigen Antworttext von ChatGPT im Gespräch klicken, nicht auf das Texteingabefeld oder den eigenen Prompt. Die Aufforderung „Jetzt … anklicken“ ist eine Klickanweisung; es muss dort nichts eingegeben werden. Mit Esc kann man abbrechen.
 

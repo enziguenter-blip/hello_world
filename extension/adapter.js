@@ -5,6 +5,16 @@
   const enabled=el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true';
   const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest(historySelector+', [role="dialog"], dialog, [role="search"], [inert]');
   const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
+  ns.matchesSourcesAcknowledgement=(text,person,count)=>{
+    const value=String(text).normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
+    const target=String(person||'').normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
+    if(!target || !/^ok[\s.!,:;]/u.test(value) || /\b(?:nicht|unvollständig|teilweise|fehlt|fehlen|unlesbar)\b/u.test(value))return false;
+    const words={1:'eine',2:'zwei',3:'drei',4:'vier',5:'fünf',6:'sechs',7:'sieben',8:'acht',9:'neun',10:'zehn'};
+    if(!new RegExp(`\\balle (?:${count}|${words[count]||count}) (?:(?:bereitgestellten|hochgeladenen) )?dateien\\b`,'u').test(value))return false;
+    if(!value.includes('vollständig') || !value.includes('zugänglich') || !value.includes('lesbar'))return false;
+    const escaped=target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    return new RegExp(`\\bzielperson(?: für (?:den|diesen) (?:folgenden )?ablauf)?\\s*(?::|ist|=|-)?\\s*${escaped}(?![\\p{L}\\p{N}])`,'u').test(value);
+  };
   ns.composerSelector = el => {
     if(!editable(el))throw Error('Bitte das beschreibbare Chat-Eingabefeld auswählen.');
     const kind=el instanceof HTMLTextAreaElement?'textarea':el.tagName.toLowerCase()+'[contenteditable]';
@@ -176,6 +186,31 @@
       const nodes=[...new Set([...this.query(role),...document.querySelectorAll(ns.defaultSelectors[role])])];
       return nodes.filter(node=>!nodes.some(other=>other!==node && node.contains(other)));
     }
+    messageStamp(el){
+      const source=el.closest('[data-message-id]')||el.querySelector('[data-message-id]');
+      const id=source?.getAttribute('data-message-id')||el.closest('[data-testid^="conversation-turn-"]')?.getAttribute('data-testid')||null;
+      const text=this.text(el);let hash=2166136261;
+      for(let i=0;i<text.length;i++)hash=Math.imul(hash^text.charCodeAt(i),16777619);
+      return {id,fingerprint:`${text.length}:${(hash>>>0).toString(16)}`};
+    }
+    snapshotConversation(){return {assistants:this.answerCandidates().map(el=>this.messageStamp(el)),users:this.messages('user').length};}
+    acknowledgementAnswer(context){
+      if(context?.acknowledgement?.type!=='sources-readable')return null;
+      const candidates=this.answerCandidates();
+      const protocolMatches=candidates.filter(el=>ns.matchesSourcesAcknowledgement(this.text(el),context.person,context.acknowledgement.fileCount));
+      const matching=candidates.filter(el=>{
+        if(!ns.matchesSourcesAcknowledgement(this.text(el),context.person,context.acknowledgement.fileCount))return false;
+        const before=context.pending?.beforeReply;
+        if(before?.assistants){
+          const current=this.messageStamp(el);
+          return !before.assistants.some(old=>current.id&&old.id?current.id===old.id:current.fingerprint===old.fingerprint);
+        }
+        // Old pending runs have no baseline. Only an unambiguous first exchange
+        // with this exact acknowledgement is eligible for automatic recovery.
+        return protocolMatches.length===1 && this.messages('user').length<=1 && candidates.at(-1)===el;
+      });
+      return matching.length===1?matching[0]:null;
+    }
     user(marker){
       // Rich-text rendering may split lines, hide a suffix or change punctuation.
       // UUID and step remain mandatory; no positional/last-message guessing.
@@ -187,37 +222,30 @@
         return content.includes(expected) || (expected.endsWith(']') && content.endsWith(expected.slice(0,-1)));
       });
     }
-    async waitForUser(marker,signal){
-      let idleSince=Date.now();
-      let chat=ns.conversationPath(location.href);
-      this.notify('Prompt gesendet. Warte auf die Zuordnung im Chat; eine laufende Generierung wird abgewartet …');
-      return this.until(()=>{
-        if(!ns.sameConversation(chat,location.href,true))throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
-        chat=ns.conversationPath(location.href);
-        const user=this.user(marker);if(user)return user;
-        if(this.one('stop'))idleSince=Date.now();
-        else if(Date.now()-idleSince>=this.userTimeout)throw Error('Die gesendete Nachricht konnte nicht zugeordnet werden. Der Prompt wird nicht erneut gesendet. Falls die Antwort fertig ist, „Vorhandene Antwort übernehmen“ verwenden; andernfalls abwarten und später fortsetzen.');
-        return false;
-      },this.replyTimeout,'Die Nachricht wurde nicht erkannt. Der offene Schritt bleibt erhalten. Sobald die Antwort fertig ist, kann sie über „Vorhandene Antwort übernehmen“ zugeordnet werden.',signal);
-    }
     turn(el){return el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement;}
     text(el){
       const blocks=[...el.querySelectorAll('.markdown')];
       return (blocks.length?blocks.map(b=>b.innerText).join('\n\n'):el.innerText).trim();
     }
-    async waitForReply(marker,signal){
-      await this.waitForUser(marker,signal);
+    async waitForReply(marker,signal,context=null){
       let chat=ns.conversationPath(location.href);
-      let previous='',stableSince=0;
+      let previous='',stableSince=0,idleSince=Date.now();
       this.notify('Warte auf die vollständige Antwort von ChatGPT …');
       return this.until(()=>{
         if(!ns.sameConversation(chat,location.href,true))throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
         chat=ns.conversationPath(location.href);
         const user=this.user(marker);
-        if(!user){stableSince=0;return false;}
-        const following=el=>!!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING);
-        if(this.messages('user').some(el=>el!==user && following(el)))throw Error('Nach dem automatischen Prompt wurde eine weitere Nachricht gesendet. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
-        const reply=this.messages('assistant').filter(following).at(-1);
+        let reply=null,recognition='marker';
+        if(user){
+          const following=el=>!!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING);
+          if(this.messages('user').some(el=>el!==user && following(el)))throw Error('Nach dem automatischen Prompt wurde eine weitere Nachricht gesendet. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
+          reply=this.messages('assistant').filter(following).at(-1);
+        }
+        if(!reply){reply=this.acknowledgementAnswer(context);if(reply)recognition='sources-acknowledgement';}
+        if(!user && !reply && !context?.acknowledgement){
+          if(this.one('stop'))idleSince=Date.now();
+          else if(Date.now()-idleSince>=this.userTimeout)throw Error('Die Antwort konnte dem offenen Prompt nicht zugeordnet werden. Bitte „Oberfläche prüfen“ verwenden. Der Prompt wird nicht erneut gesendet.');
+        }
         if(!reply || this.one('stop')){stableSince=0;return false;}
         const turn=this.turn(reply);
         const busy=this.query('responseBusy',turn).some(visible);
@@ -227,7 +255,7 @@
         const signature=text+'\n'+images.map(img=>img.currentSrc||img.src).join('\n');
         if(!text && !images.length)return false;
         if(signature!==previous){previous=signature;stableSince=Date.now();return false;}
-        return Date.now()-stableSince>=this.stableMs ? {element:reply,text:text||'[Bildantwort ohne Begleittext]'} : false;
+        return Date.now()-stableSince>=this.stableMs ? {element:reply,text:text||'[Bildantwort ohne Begleittext]',recognition} : false;
       },this.replyTimeout,'Die Antwort wurde nicht als vollständig erkannt. Der Lauf bleibt beim offenen Schritt. Prüfe den Chat und gegebenenfalls die Abschluss-Selektoren.',signal);
     }
     answerAt(target){

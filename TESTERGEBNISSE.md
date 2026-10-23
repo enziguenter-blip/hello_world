@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.3**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.4**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -50,7 +50,16 @@ Zusätzliche Prüfungen für die verspätete Gesprächsadresse und die unklare K
 - Eine fertige Antwort kann aus einer Vorschau im Panel bestätigt werden, ohne sie auf der Gesprächsseite anklicken zu müssen; es wird kein Prompt gesendet.
 - Fortsetzen nach Schritt 1 mit noch gespeicherter Startseitenadresse, auch ohne offenen Schritt: nur Schritt 2 wird gesendet.
 
-Der vollständige Testlauf besteht aus **38 Tests: 37 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für den automatischen Übergang ohne OK-Bestätigung:
+
+- Die vom Nutzer zitierte OK-Antwort für Günter führt ohne erkannte Nutzer-Markierung automatisch zu Schritt 2; kein manuell übernommenes Ergebnis, kein erneutes Senden von Schritt 1 und kein Fortschalten während der Generierung.
+- Bei dieser zusätzlichen Erkennung starten ein falscher Name, eine falsche Dateianzahl, eine negative Lesbarkeitsmeldung und ein nicht zuordenbares bloßes „OK“ keinen ungeprüften Folgeschritt.
+- Ein alter angehaltener erster Schritt lässt sich anhand der eindeutigen fertigen Bestätigung fortsetzen; nur Schritt 2 wird gesendet.
+- Eine vor dem neuen Senden vorhandene OK-Antwort wird durch die gespeicherte Ausgangslage ausgeschlossen.
+- Mehrdeutige alte Bestätigungen werden nicht automatisch ausgewählt.
+- Der primäre automatische Start im Panel führt beide Schritte ohne Dialog und ohne Öffnen der manuellen Werkzeuge aus.
+
+Der vollständige Testlauf besteht aus **44 Tests: 43 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -62,4 +71,4 @@ Der vollständige Testlauf besteht aus **38 Tests: 37 bestanden, 1 übersprungen
 
 ## Nächster Praxistest
 
-Unter Windows die Erweiterung lokal laden und nur **Nächsten Schritt testen** verwenden. Dabei Anhänge, Prompt, genau einmaliges Senden, Antwort und den gespeicherten Textbericht kontrollieren. Erst anschließend weitere Schritte starten. Insbesondere Schritt 5 und 7 müssen mit den tatsächlichen Bild- und Downloadfunktionen des gewählten ChatGPT-Modells erprobt werden. Die Testversion ist noch keine als vollständig unbeaufsichtigt verifizierte Lösung.
+Unter Windows **Automatisch starten / fortsetzen** verwenden und den direkten Übergang von der fertigen OK-Antwort zu den Uploads für Schritt 2 beobachten. Der Einzelschritt-Test liegt nur im Bereich **Diagnose und manuelle Reparatur** und pausiert absichtlich. Insbesondere Schritt 5 und 7 müssen mit den tatsächlichen Bild- und Downloadfunktionen des gewählten ChatGPT-Modells erprobt werden. Die Testversion ist noch keine als vollständig unbeaufsichtigt verifizierte Lösung.

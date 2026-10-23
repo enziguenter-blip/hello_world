@@ -26,6 +26,7 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  const record={prompt:'value' in composer?composer.value:composer.innerText,names:[...input.files].map(f=>f.name),text:await Promise.all([...input.files].map(f=>f.text())),at:Date.now()};
  window.sent.push(record);const n=window.sent.length;
  const user=document.createElement('div');user.dataset.messageAuthorRole='user';user.textContent=record.prompt;document.querySelector('#messages').append(user);
+ if(window.omitFirstUserRole && n===1)user.removeAttribute('data-message-author-role');
  if('value' in composer)composer.value='';else composer.textContent='';previews.replaceChildren();input.value='';
  const stop=document.createElement('button');stop.dataset.testid='stop-button';stop.textContent='Stop';document.body.append(stop);
  const article=document.createElement('article');const assistant=document.createElement('div');assistant.dataset.messageAuthorRole='assistant';
@@ -33,7 +34,7 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  setTimeout(()=>{
    if(!window.omitCompletion){const copy=document.createElement('button');copy.dataset.testid='copy-turn-action-button';copy.textContent='Kopieren';article.append(copy);}
  },80);
- setTimeout(()=>{markdown.textContent='Endfassung '+n;
+ setTimeout(()=>{markdown.textContent=window.answerTextByTurn?.[n]||'Endfassung '+n;
    if(window.makeAsset || window.assetSteps?.includes(n)){const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img');img.src=URL.createObjectURL(svg);assistant.append(img);}
    if(window.sandboxLink){const a=document.createElement('a');a.href='sandbox:/mnt/data/bericht.pdf';a.textContent='bericht.pdf';assistant.append(a);}
  },140);
@@ -187,6 +188,8 @@ class BrowserTests(unittest.TestCase):
         page.locator('#sources').set_input_files({'name': 'quelle.md', 'mimeType': 'text/markdown', 'buffer': b'Originalquelle'})
         page.get_by_role('button', name='Dateien prüfen', exact=True).click()
         self.assertIn('eindeutig vorhanden', page.locator('#status').inner_text())
+        if not page.locator('#manualTools').evaluate('el=>el.open'):
+            page.get_by_text('Diagnose und manuelle Reparatur', exact=True).click()
         page.get_by_role('button', name='Nächsten Schritt testen', exact=True).click()
         page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('fertig')")
         self.assertEqual(page.evaluate('sent.length'), 1)
@@ -298,6 +301,7 @@ class BrowserTests(unittest.TestCase):
         }''')
         self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
         self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
+        self.page.get_by_text('Diagnose und manuelle Reparatur', exact=True).click()
         self.page.get_by_role('button', name='Chat-Eingabefeld auswählen', exact=True).click()
         self.page.locator('form .ProseMirror').first.click()
         self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('zugeordnet')")
@@ -506,6 +510,7 @@ class BrowserTests(unittest.TestCase):
         }''')
         self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
         self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
+        self.page.get_by_text('Diagnose und manuelle Reparatur', exact=True).click()
         self.page.get_by_role('button', name='Vorhandene Antwort übernehmen', exact=True).click()
         self.page.get_by_text('Keine passende Vorschau?', exact=True).click()
         self.page.get_by_role('button', name='Antwort direkt im Chat auswählen', exact=True).click()
@@ -591,6 +596,7 @@ class BrowserTests(unittest.TestCase):
         }''')
         self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
         self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
+        self.page.get_by_text('Diagnose und manuelle Reparatur', exact=True).click()
         self.page.get_by_role('button', name='Vorhandene Antwort übernehmen', exact=True).click()
         self.assertIn('Alle sechs Dateien', self.page.locator('#recoveryChoices').inner_text())
         self.page.once('dialog', lambda dialog: dialog.accept())
@@ -613,6 +619,106 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(len(result['sent']), 1)
         self.assertIn('Schritt 2]', result['sent'][0]['prompt'])
         self.assertEqual(len(result['run']['results']), 2)
+
+    ACK = 'OK. Alle sechs Dateien sind vollständig zugänglich und lesbar. Zielperson für den folgenden Ablauf: Günter.'
+
+    def bootstrap_acknowledgement(self):
+        self.bootstrap(steps=2)
+        self.page.evaluate('''ack=>{
+          flow.steps[0]=structuredClone(ProtoScanner.defaultWorkflow.steps[0]);
+          flow.steps[0].files=['quelle.md','zwei.md','drei.md','vier.md','fuenf.md','sechs.md'];
+          files=flow.steps[0].files.map(name=>new File(['Quelle '+name],name,{type:'text/markdown'}));
+          run=ProtoScanner.newRun('Günter',flow,location.href);
+          window.omitFirstUserRole=true;window.answerTextByTurn={1:ack};
+        }''', self.ACK)
+
+    def test_39_exact_customer_acknowledgement_starts_step_two_automatically(self):
+        self.bootstrap_acknowledgement()
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 2)
+        self.assertEqual(len(result['sent'][0]['names']), 6)
+        self.assertEqual(result['run']['results'][0]['recognition'], 'sources-acknowledgement')
+        self.assertFalse(result['run']['results'][0]['manuallyAdopted'])
+        self.assertEqual(result['run']['results'][0]['text'], self.ACK)
+        self.assertGreaterEqual(result['sent'][1]['at'], result['finished'][0])
+
+    def test_40_incomplete_or_wrong_acknowledgement_never_advances(self):
+        for answer in [self.ACK.replace('Günter', 'Manuel'), self.ACK.replace('sechs', 'fünf'), self.ACK.replace('vollständig', 'nicht vollständig'), 'OK.']:
+            with self.subTest(answer=answer):
+                self.page.goto(URL)
+                for name in ['workflow.js', 'core.js', 'adapter.js']:
+                    self.page.add_script_tag(path=ROOT / 'extension' / name)
+                self.bootstrap_acknowledgement()
+                self.page.evaluate('answer=>{answerTextByTurn[1]=answer;adapter.replyTimeout=450;}', answer)
+                result = self.execute()
+                self.assertEqual(result['run']['status'], 'angehalten')
+                self.assertEqual(result['run']['results'], [])
+                self.assertEqual(len(result['sent']), 1)
+                self.assertIsNotNone(result['run']['pending'])
+
+    def test_41_old_pending_first_step_resumes_from_ack_without_confirmation(self):
+        self.bootstrap_acknowledgement()
+        self.seed_pending_answer()
+        self.page.evaluate('''ack=>{
+          delete run.flow.steps[0].acknowledgement;
+          existingAnswer.querySelector('.markdown').textContent=ack;
+          document.querySelector('[data-message-author-role="user"]').removeAttribute('data-message-author-role');
+          run.chatUrl='https://chatgpt.com/';window.omitFirstUserRole=false;
+        }''', self.ACK)
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 1)
+        self.assertIn('Schritt 2]', result['sent'][0]['prompt'])
+        self.assertEqual(result['run']['results'][0]['recognition'], 'sources-acknowledgement')
+        self.assertFalse(result['run']['results'][0]['manuallyAdopted'])
+
+    def test_42_preexisting_ack_is_not_accepted_for_a_new_send(self):
+        self.bootstrap_acknowledgement()
+        self.seed_pending_answer()
+        self.page.evaluate('''ack=>{
+          run.pending=null;existingAnswer.querySelector('.markdown').textContent=ack;
+          document.querySelector('[data-message-author-role="user"]').textContent='Vorherige fremde Anfrage';
+          window.answerTextByTurn={1:'Die Verarbeitung ist fehlgeschlagen.'};adapter.replyTimeout=450;
+        }''', self.ACK)
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'angehalten')
+        self.assertEqual(result['run']['results'], [])
+        self.assertEqual(len(result['sent']), 1)
+        self.assertEqual(len(result['run']['pending']['beforeReply']['assistants']), 1)
+
+    def test_43_ambiguous_legacy_acknowledgements_are_not_silently_selected(self):
+        self.bootstrap_acknowledgement()
+        self.seed_pending_answer()
+        self.page.evaluate('''ack=>{
+          existingAnswer.querySelector('.markdown').textContent=ack;
+          const another=existingAnswer.parentElement.cloneNode(true);another.dataset.testid='conversation-turn-3';existingAnswer.parentElement.after(another);
+          document.querySelector('[data-message-author-role="user"]').removeAttribute('data-message-author-role');
+          adapter.replyTimeout=300;
+        }''', self.ACK)
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'angehalten')
+        self.assertEqual(result['run']['results'], [])
+        self.assertEqual(result['sent'], [])
+
+    def test_44_default_ui_runs_both_steps_without_dialogs_or_manual_tools(self):
+        self.bootstrap_acknowledgement()
+        flow = self.page.evaluate('flow')
+        names = self.page.evaluate('files.map(file=>file.name)')
+        self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
+        self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
+        self.page.get_by_text('Dateizuordnung und Prompts bearbeiten', exact=True).click()
+        self.page.locator('#workflow').fill(json.dumps(flow))
+        self.page.locator('#person').fill('Günter')
+        self.page.locator('#sources').set_input_files([{'name': name, 'mimeType': 'text/markdown', 'buffer': b'Quelle'} for name in names])
+        dialogs = []
+        self.page.on('dialog', lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
+        self.page.get_by_role('button', name='Automatisch starten / fortsetzen', exact=True).click()
+        self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('fertig')")
+        self.assertEqual(self.page.evaluate('sent.length'), 2)
+        self.assertEqual(dialogs, [])
+        self.assertFalse(self.page.locator('#manualTools').evaluate('el=>el.open'))
+        self.assertIn('2/2 abgeschlossen', self.page.locator('#status').inner_text())
 
 
 if __name__ == '__main__':

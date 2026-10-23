@@ -10,12 +10,16 @@
   <button id="toggle" type="button" aria-expanded="false" aria-controls="panel">Scanner-Ablauf</button>
   <section id="panel" hidden aria-label="Proto-Disput Automatisierung">
     <div class="head"><h2>Proto-Disput · Browserablauf <small id="version"></small></h2><button id="close" type="button" aria-label="Panel schließen">×</button></div>
-    <p class="notice">Lokale Testversion. Nicht an einem angemeldeten ChatGPT-Konto geprüft. Zuerst einen einzelnen Schritt testen. Der gesamte Verlauf ist nicht automatisch vollständig im aktiven Modellkontext.</p>
+    <p class="notice">Lokale Testversion. Dateien auswählen, Zielperson eintragen und „Automatisch starten / fortsetzen“ drücken. Fertige Antworten werden gespeichert; der nächste Schritt beginnt ohne zusätzliche Bestätigung.</p>
     <label for="person">Zielperson</label><input id="person" placeholder="z. B. Manuel" autocomplete="off">
     <label for="sources">Quelldateien einmal auswählen</label><input id="sources" type="file" multiple>
     <details><summary>Stattdessen einen Ordner auswählen</summary><input id="folder" type="file" multiple webkitdirectory><p class="muted">Nur die ausgewählten Dateien werden verfügbar. Beim Neuladen müssen sie erneut ausgewählt werden.</p></details>
     <div id="files" class="muted">Noch keine Quelldateien ausgewählt.</div>
-    <div class="row"><button id="check" type="button">Dateien prüfen</button><button id="next" type="button">Nächsten Schritt testen</button></div>
+    <button id="check" type="button">Dateien prüfen</button>
+    <div class="row"><button id="start" class="primary" type="button">Automatisch starten / fortsetzen</button><button id="pause" type="button" disabled>Pause</button></div>
+    <details id="manualTools"><summary>Diagnose und manuelle Reparatur</summary>
+    <p class="muted">Der folgende Testmodus pausiert nach einem Schritt. Für den vollständigen Ablauf den automatischen Start verwenden.</p>
+    <button id="next" type="button">Nächsten Schritt testen</button>
     <div class="row"><button id="pickComposer" type="button">Chat-Eingabefeld auswählen</button><button id="diagnose" type="button">Oberfläche prüfen</button></div>
     <button id="adoptAnswer" type="button" disabled>Vorhandene Antwort übernehmen</button>
     <section id="answerRecovery" hidden>
@@ -25,7 +29,7 @@
       <button id="cancelRecovery" type="button">Abbrechen</button>
     </section>
     <div id="diagnostics" hidden><p class="muted">Diese Diagnose enthält Feldkennungen und Zustände, keine Gesprächsinhalte oder Dateinamen. Bei Problemen kannst du den Text kopieren und weitergeben.</p><textarea id="diagnosticText" readonly aria-label="Diagnose ohne Gesprächsinhalte"></textarea></div>
-    <div class="row"><button id="start" class="primary" type="button">Ablauf starten / fortsetzen</button><button id="pause" type="button" disabled>Pause</button></div>
+    </details>
     <p class="muted">ChatGPT kann während einer Pause weiterarbeiten. Während des Ablaufs im selben Chat bleiben und keine zusätzlichen Nachrichten senden. Dateien, Prompts und Folgeanfragen werden über dein Konto an ChatGPT gesendet.</p>
     <div id="status" class="status" role="status" aria-live="polite">Bereit zur Einrichtung.</div>
     <p id="error" class="error" role="alert"></p>
@@ -47,7 +51,7 @@
       <textarea id="selectors" spellcheck="false" aria-label="CSS-Selektoren"></textarea>
       <button id="saveSelectors" type="button">Selektoren speichern</button>
     </details>
-    <p class="muted">Quellinhalte werden nicht separat dauerhaft von der Erweiterung gespeichert. Berichte, Konfiguration und Fortschritt liegen lokal im Erweiterungsspeicher. Binärdateien bleiben bis zum Neuladen im Arbeitsspeicher. ZIP-Sicherungen bitte selbst herunterladen.</p>
+    <p class="muted">Nicht an einem angemeldeten ChatGPT-Konto geprüft. Der gesamte Verlauf ist nicht automatisch vollständig im aktiven Modellkontext. Quellinhalte werden nicht separat dauerhaft von der Erweiterung gespeichert. Berichte, Konfiguration und Fortschritt liegen lokal im Erweiterungsspeicher. Binärdateien bleiben bis zum Neuladen im Arbeitsspeicher. ZIP-Sicherungen bitte selbst herunterladen.</p>
   </section>`;
   document.documentElement.append(host);
   const $=id=>shadow.getElementById(id);
@@ -132,7 +136,7 @@
       const selector=ns.composerSelector(el);
       selectors={...selectors,composer:selector};ns.selectedComposer=el;
       await storage.set({selectors});$('selectors').value=JSON.stringify(selectors,null,2);
-      return 'Nachrichtenfeld zugeordnet. Bitte „Nächsten Schritt testen“ wählen.';
+      return 'Nachrichtenfeld zugeordnet. Du kannst den automatischen Ablauf starten.';
     });
   });
   async function adoptElement(adapter,el){
@@ -141,7 +145,7 @@
     if(!confirm(`Diese fertige Antwort für Schritt ${run.pending.step} (${run.person}) übernehmen? Der offene Prompt wird nicht erneut gesendet. Bitte Zuordnung und Vollständigkeit der Antwort prüfen.`))return 'Übernahme abgebrochen. Der offene Schritt bleibt erhalten.';
     runner=new ns.Runner(adapter,async value=>storage.set({latestRun:JSON.parse(JSON.stringify(value))}),paint);
     await runner.adoptAnswer(run,el,assets);
-    return `Antwort übernommen · ${run.results.length}/${run.flow.steps.length} abgeschlossen. Mit „Ablauf starten / fortsetzen“ geht es beim nächsten Schritt weiter.`;
+    return `Antwort übernommen · ${run.results.length}/${run.flow.steps.length} abgeschlossen. Mit „Automatisch starten / fortsetzen“ geht es beim nächsten Schritt weiter.`;
   }
   $('adoptAnswer').onclick=guard(async()=>{
     if(runner?.running || !run?.pending)return;

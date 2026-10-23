@@ -11,6 +11,7 @@
       if (!Array.isArray(step.files) || step.files.some(f => typeof f !== 'string' || !f)) throw Error(`Ungültige Dateiliste in Schritt ${step.id}.`);
       if (!Array.isArray(step.reuse) || step.reuse.some(id => !previous.has(id))) throw Error(`Schritt ${step.id} darf nur frühere Ergebnisse referenzieren.`);
       if (step.requireAsset !== undefined && typeof step.requireAsset !== 'boolean') throw Error('requireAsset muss true oder false sein.');
+      if(step.acknowledgement && (previous.size!==0 || step.acknowledgement.type!=='sources-readable' || !Number.isInteger(step.acknowledgement.fileCount) || step.acknowledgement.fileCount!==step.files.length || step.reuse.length))throw Error('Eine Quellenbestätigung ist nur im ersten Schritt mit passender Dateianzahl zulässig.');
       previous.add(step.id);
     }
     return flow;
@@ -33,6 +34,14 @@
     return errors;
   }
   const markerFor = (run, step) => `[Proto-Disput ${run.id} / Schritt ${step.id}]`;
+  function acknowledgementFor(run,step){
+    if(run.results.length || run.flow.steps[0]?.id!==step.id)return null;
+    if(step.acknowledgement)return step.acknowledgement;
+    // Preserve already saved workflows from 0.1.0–0.1.3 without rewriting them.
+    const original=ns.defaultWorkflow.steps[0];
+    if(step.title===original.title && step.prompt===original.prompt && step.files.length===6 && !step.reuse.length)return {type:'sources-readable',fileCount:6};
+    return null;
+  }
   function promptFor(run,step) {
     return `${step.prompt.replaceAll('{{person}}',run.person)}\n\n${markerFor(run,step)}`;
   }
@@ -81,7 +90,7 @@
       if(signal.aborted)throw new DOMException('Pausiert','AbortError');
       if(!sameConversation(chat,this.adapter.url(),!!run.pending||!!run.results.length))throw Error('Während der Ergebnisübernahme wurde der Chat gewechselt.');
       for(const file of unique)assets[`${step.id}/${file.name}`]=file;
-      run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,manuallyAdopted:manual,assetWarnings:captured.errors,completedAt:new Date().toISOString()});
+      run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,manuallyAdopted:manual,recognition:manual?'manual':result.recognition||'marker',assetWarnings:captured.errors,completedAt:new Date().toISOString()});
       run.pending=null;run.chatUrl=this.adapter.url();delete run.error;
     }
     async adoptAnswer(run,element,assets={}){
@@ -122,7 +131,7 @@
           if (run.pending) {
             if (run.pending.step!==step.id) throw Error('Der offene Schritt stimmt nicht mit dem Fortschritt überein.');
             // Never resubmit an uncertain send after interruption/reload.
-            result=await this.adapter.waitForReply(run.pending.marker,signal);
+            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending});
           } else {
             const files=resolveFiles(step.files,selectedFiles);
             for (const id of step.reuse) {
@@ -138,13 +147,10 @@
               }
             }
             await this.adapter.prepare(files,promptFor(run,step),signal);
-            run.pending={step:step.id,marker:markerFor(run,step),preparedAt:new Date().toISOString()};
+            run.pending={step:step.id,marker:markerFor(run,step),preparedAt:new Date().toISOString(),beforeReply:this.adapter.snapshotConversation?.()||null};
             await this.persist(run);
             await this.adapter.send(signal);
-            await this.adapter.waitForUser(run.pending.marker,signal);
-            run.chatUrl=this.adapter.url();
-            await this.persist(run);
-            result=await this.adapter.waitForReply(run.pending.marker,signal);
+            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending});
           }
           await this.recordResult(run,step,result,assets,signal);
           await this.persist(run);
@@ -175,5 +181,5 @@
     const end=record(22,[[0,0x06054b50,4],[8,entries.length,2],[10,entries.length,2],[12,directorySize,4],[16,offset,4]]);
     return new Blob([...parts,...directory,end],{type:'application/zip'});
   }
-  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,newRun,outputFile,fileManifest,conversationPath,conversationLocation,sameConversation,Runner,zip});
+  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,acknowledgementFor,newRun,outputFile,fileManifest,conversationPath,conversationLocation,sameConversation,Runner,zip});
 })();
