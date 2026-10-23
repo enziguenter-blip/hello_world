@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.2**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.3**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -41,7 +41,16 @@ Zusätzliche Prüfungen für „gesendete Nachricht nicht erkannt“:
 - Übernahme im Panel durch Anklicken einer fertigen Antwort, auch ohne automatische Erkennung des zugehörigen Nutzerprompts.
 - Keine Verwechslung von Schritt 1 mit Schritt 11; fehlende Nutzerzuordnung führt nicht zum ungeprüften Fortschalten.
 
-Der vollständige Testlauf besteht aus **32 Tests: 31 bestanden, 1 übersprungen**; zwei Tests prüfen mehrere Editor- bzw. Nachrichtenvarianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für die verspätete Gesprächsadresse und die unklare Klickanweisung:
+
+- Zuordnung von Startseite, GPT-Chat, Gesprächs-ID und normalem/GPT-Adressalias; keine Gleichsetzung verschiedener bestehender Gespräche oder verschiedener Hosts.
+- ChatGPT erstellt die erste Gesprächsadresse während der Generierung: beide Schritte laufen durch, ohne den ersten zu wiederholen.
+- Die Gesprächsadresse entsteht erst nach der Speicherung von Schritt 1: Schritt 2 wird korrekt gestartet.
+- Ein echter Wechsel zwischen bestehenden Gesprächs-IDs hält den Ablauf weiterhin an.
+- Eine fertige Antwort kann aus einer Vorschau im Panel bestätigt werden, ohne sie auf der Gesprächsseite anklicken zu müssen; es wird kein Prompt gesendet.
+- Fortsetzen nach Schritt 1 mit noch gespeicherter Startseitenadresse, auch ohne offenen Schritt: nur Schritt 2 wird gesendet.
+
+Der vollständige Testlauf besteht aus **38 Tests: 37 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 

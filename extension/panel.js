@@ -18,6 +18,12 @@
     <div class="row"><button id="check" type="button">Dateien prüfen</button><button id="next" type="button">Nächsten Schritt testen</button></div>
     <div class="row"><button id="pickComposer" type="button">Chat-Eingabefeld auswählen</button><button id="diagnose" type="button">Oberfläche prüfen</button></div>
     <button id="adoptAnswer" type="button" disabled>Vorhandene Antwort übernehmen</button>
+    <section id="answerRecovery" hidden>
+      <h3>Fertige Antwort übernehmen</h3>
+      <p id="recoveryHelp" class="muted"></p><div id="recoveryChoices"></div>
+      <details><summary>Keine passende Vorschau?</summary><p class="muted">Mit dem folgenden Knopf blendet sich dieses Panel aus. Klicke dann direkt auf die fertige Nachricht von ChatGPT im Gespräch, z. B. auf „OK. Alle sechs …“. Du musst dabei nichts eingeben.</p><button id="pickAnswerPage" type="button">Antwort direkt im Chat auswählen</button></details>
+      <button id="cancelRecovery" type="button">Abbrechen</button>
+    </section>
     <div id="diagnostics" hidden><p class="muted">Diese Diagnose enthält Feldkennungen und Zustände, keine Gesprächsinhalte oder Dateinamen. Bei Problemen kannst du den Text kopieren und weitergeben.</p><textarea id="diagnosticText" readonly aria-label="Diagnose ohne Gesprächsinhalte"></textarea></div>
     <div class="row"><button id="start" class="primary" type="button">Ablauf starten / fortsetzen</button><button id="pause" type="button" disabled>Pause</button></div>
     <p class="muted">ChatGPT kann während einer Pause weiterarbeiten. Während des Ablaufs im selben Chat bleiben und keine zusätzlichen Nachrichten senden. Dateien, Prompts und Folgeanfragen werden über dein Konto an ChatGPT gesendet.</p>
@@ -58,6 +64,9 @@
     const busy=!!runner?.running || picking;
     for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','pickComposer','diagnose'])$(id).disabled=busy;
     $('adoptAnswer').disabled=busy || !run?.pending;
+    $('pickAnswerPage').disabled=busy || !run?.pending;
+    for(const button of $('recoveryChoices').querySelectorAll('button'))button.disabled=busy;
+    if(!run?.pending)$('answerRecovery').hidden=true;
     $('person').disabled=busy || !!run;
     $('pause').disabled=!runner?.running;
     if(run){
@@ -85,7 +94,7 @@
   const toggle=open=>{$('panel').hidden=!open;$('toggle').setAttribute('aria-expanded',String(open));};
   $('toggle').onclick=()=>{if(cancelPick)cancelPick();else toggle($('panel').hidden);};$('close').onclick=()=>toggle(false);
   $('diagnose').onclick=guard(async()=>{
-    const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose(run?.pending?.marker);
+    const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose(run?.pending?.marker,run?.chatUrl);
     $('diagnostics').hidden=false;$('diagnosticText').value=JSON.stringify(report,null,2);
     $('status').textContent=report.selected?'Das Nachrichtenfeld wurde erkannt. Es wurde nichts gesendet.':'Kein eindeutiges Nachrichtenfeld erkannt. Bitte „Chat-Eingabefeld auswählen“ verwenden.';
     if(report.problem)throw Error(report.problem);
@@ -126,18 +135,37 @@
       return 'Nachrichtenfeld zugeordnet. Bitte „Nächsten Schritt testen“ wählen.';
     });
   });
+  async function adoptElement(adapter,el){
+    adapter.selectedAnswer(el);
+    if(!run?.pending)throw Error('Es gibt keinen offenen Schritt.');
+    if(!confirm(`Diese fertige Antwort für Schritt ${run.pending.step} (${run.person}) übernehmen? Der offene Prompt wird nicht erneut gesendet. Bitte Zuordnung und Vollständigkeit der Antwort prüfen.`))return 'Übernahme abgebrochen. Der offene Schritt bleibt erhalten.';
+    runner=new ns.Runner(adapter,async value=>storage.set({latestRun:JSON.parse(JSON.stringify(value))}),paint);
+    await runner.adoptAnswer(run,el,assets);
+    return `Antwort übernommen · ${run.results.length}/${run.flow.steps.length} abgeschlossen. Mit „Ablauf starten / fortsetzen“ geht es beim nächsten Schritt weiter.`;
+  }
   $('adoptAnswer').onclick=guard(async()=>{
     if(runner?.running || !run?.pending)return;
     const adapter=new ns.DOMAdapter(selectors);
     adapter.assertChatPage();
     if(adapter.one('stop'))throw Error('ChatGPT arbeitet noch. Bitte auf die fertige Antwort warten.');
-    pickFromPage('Jetzt den fertigen Antworttext von ChatGPT anklicken',target=>adapter.answerAt(target),async el=>{
-      adapter.selectedAnswer(el);
-      if(!confirm(`Die ausgewählte fertige Antwort für Schritt ${run.pending.step} (${run.person}) übernehmen? Der offene Prompt wird nicht erneut gesendet. Bitte Zuordnung und Vollständigkeit der Antwort prüfen.`))return 'Übernahme abgebrochen. Der offene Schritt bleibt erhalten.';
-      runner=new ns.Runner(adapter,async value=>storage.set({latestRun:JSON.parse(JSON.stringify(value))}),paint);
-      await runner.adoptAnswer(run,el,assets);
-      return `Antwort übernommen · ${run.results.length}/${run.flow.steps.length} abgeschlossen. Mit „Ablauf starten / fortsetzen“ geht es beim nächsten Schritt weiter.`;
-    });
+    const candidates=adapter.answerCandidates().slice(-3).reverse();
+    $('recoveryChoices').replaceChildren();$('answerRecovery').hidden=false;
+    $('recoveryHelp').textContent=candidates.length?`Offener Schritt ${run.pending.step} für ${run.person}. Prüfe die passende Antwortvorschau und klicke darunter auf „Diese Antwort übernehmen“. Gespeichert wird der vollständige Antworttext.`:'Keine Antwortvorschau erkannt. Unter „Keine passende Vorschau?“ kannst du die fertige Antwort direkt im Chat auswählen.';
+    for(const el of candidates){
+      const card=document.createElement('div'),preview=document.createElement('p'),button=document.createElement('button');
+      card.className='status';card.style.marginBottom='10px';preview.style.whiteSpace='pre-wrap';
+      const text=adapter.text(el);preview.textContent=text?text.slice(0,600)+(text.length>600?' …':''):'[Bildantwort ohne Begleittext]';
+      button.type='button';button.textContent='Diese Antwort übernehmen';button.onclick=guard(async()=>{$('status').textContent=await adoptElement(adapter,el);});
+      card.append(preview,button);$('recoveryChoices').append(card);
+    }
+    $('answerRecovery').scrollIntoView({block:'nearest'});
+  });
+  $('cancelRecovery').onclick=()=>{$('answerRecovery').hidden=true;};
+  $('pickAnswerPage').onclick=guard(async()=>{
+    if(runner?.running || !run?.pending)return;
+    const adapter=new ns.DOMAdapter(selectors);adapter.assertChatPage();
+    if(adapter.one('stop'))throw Error('ChatGPT arbeitet noch. Bitte auf die fertige Antwort warten.');
+    pickFromPage('Klicke direkt auf die fertige ChatGPT-Antwort – keine Eingabe nötig',target=>adapter.answerAt(target),el=>adoptElement(adapter,el));
   });
   $('check').onclick=guard(async()=>{
     const errors=ns.preflight(run?.flow||config(),files);

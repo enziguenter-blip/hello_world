@@ -67,12 +67,12 @@
       const known=candidates.filter(el=>el.id==='prompt-textarea' || el.dataset.testid==='composer-text-input' || el.closest('#prompt-textarea, [data-testid="composer"], [data-testid="composer-container"], #composer-background'));
       return choose(known.length?known:candidates);
     }
-    diagnose(marker=null){
+    diagnose(marker=null,savedUrl=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
       let selected=null,problem=null;
       const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
       try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
-      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length}};
+      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},routing:{currentPageKind:ns.conversationLocation(location.href).kind,savedPageKind:savedUrl?ns.conversationLocation(savedUrl).kind:null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null}};
     }
     async until(check,timeout,description,signal){
       const end=Date.now()+timeout;
@@ -187,14 +187,13 @@
         return content.includes(expected) || (expected.endsWith(']') && content.endsWith(expected.slice(0,-1)));
       });
     }
-    canRebindPending(run){
-      const old=new URL(run.chatUrl),current=new URL(location.href);
-      return !!run.pending && old.origin===current.origin && !/\/c\/[^/]+\/?$/.test(old.pathname) && /\/c\/[^/]+\/?$/.test(current.pathname) && !!this.user(run.pending.marker);
-    }
     async waitForUser(marker,signal){
       let idleSince=Date.now();
+      let chat=ns.conversationPath(location.href);
       this.notify('Prompt gesendet. Warte auf die Zuordnung im Chat; eine laufende Generierung wird abgewartet …');
       return this.until(()=>{
+        if(!ns.sameConversation(chat,location.href,true))throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
+        chat=ns.conversationPath(location.href);
         const user=this.user(marker);if(user)return user;
         if(this.one('stop'))idleSince=Date.now();
         else if(Date.now()-idleSince>=this.userTimeout)throw Error('Die gesendete Nachricht konnte nicht zugeordnet werden. Der Prompt wird nicht erneut gesendet. Falls die Antwort fertig ist, „Vorhandene Antwort übernehmen“ verwenden; andernfalls abwarten und später fortsetzen.');
@@ -208,11 +207,12 @@
     }
     async waitForReply(marker,signal){
       await this.waitForUser(marker,signal);
-      const chat=ns.conversationPath(location.href);
+      let chat=ns.conversationPath(location.href);
       let previous='',stableSince=0;
       this.notify('Warte auf die vollständige Antwort von ChatGPT …');
       return this.until(()=>{
-        if(ns.conversationPath(location.href)!==chat)throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
+        if(!ns.sameConversation(chat,location.href,true))throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
+        chat=ns.conversationPath(location.href);
         const user=this.user(marker);
         if(!user){stableSince=0;return false;}
         const following=el=>!!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING);
@@ -238,6 +238,13 @@
       const article=target.closest('article[data-testid^="conversation-turn-"], article[data-turn="assistant"]');
       if(article && !article.querySelector('[data-turn="user"], [data-message-author-role="user"]'))return article;
       return null;
+    }
+    answerCandidates(){
+      const known=this.messages('assistant');
+      const fallback=[...document.querySelectorAll('article[data-testid^="conversation-turn-"]')].filter(el=>el.querySelector('.markdown') && this.answerAt(el)===el);
+      const nodes=[...new Set([...known,...fallback])];
+      const rendered=nodes.filter(el=>visible(el)||[...el.children].some(visible));
+      return rendered.filter(el=>!rendered.some(other=>other!==el && el.contains(other))).sort((a,b)=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
     }
     selectedAnswer(element){
       this.assertChatPage();

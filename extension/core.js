@@ -54,6 +54,19 @@
     const u = new URL(url);
     return `${u.origin}${u.pathname}`;
   }
+  function conversationLocation(url){
+    const u=new URL(url),match=u.pathname.match(/^\/(?:g\/[^/]+\/)?c\/([^/]+)\/?$/);
+    return {origin:u.origin,path:u.pathname,id:match?.[1]||null,kind:match?'conversation':/^\/$|^\/g\/[^/]+(?:\/project)?\/?$/.test(u.pathname)?'new-chat':'other'};
+  }
+  function sameConversation(from,to,allowCreation=false){
+    const a=conversationLocation(from),b=conversationLocation(to);
+    if(a.origin!==b.origin)return false;
+    if(a.path===b.path)return true;
+    if(a.id&&b.id)return a.id===b.id;
+    // The first send creates /c/<id>. This can happen after the first answer.
+    // Only a previously attempted/completed step permits this initial binding.
+    return allowCreation && a.kind==='new-chat' && b.kind==='conversation';
+  }
   class Runner {
     constructor(adapter,save,onChange) { this.adapter=adapter; this.save=save; this.onChange=onChange; this.running=false; this.controller=null; }
     pause() { this.controller?.abort(); }
@@ -66,7 +79,7 @@
       if(captured.errors.length && !supplied.length)throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
       const unique=[...new Map([...supplied,...captured.files].map(file=>[file.name,file])).values()];
       if(signal.aborted)throw new DOMException('Pausiert','AbortError');
-      if(chat!==conversationPath(this.adapter.url()))throw Error('Während der Ergebnisübernahme wurde der Chat gewechselt.');
+      if(!sameConversation(chat,this.adapter.url(),!!run.pending||!!run.results.length))throw Error('Während der Ergebnisübernahme wurde der Chat gewechselt.');
       for(const file of unique)assets[`${step.id}/${file.name}`]=file;
       run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,manuallyAdopted:manual,assetWarnings:captured.errors,completedAt:new Date().toISOString()});
       run.pending=null;run.chatUrl=this.adapter.url();delete run.error;
@@ -103,12 +116,8 @@
         for (let i=run.results.length; i<run.flow.steps.length; i++) {
           const step=run.flow.steps[i];
           if (signal.aborted) throw new DOMException('Pausiert','AbortError');
-          if (conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())){
-            // Recover old runs that timed out before recording the new /c/ URL.
-            // A matching UUID-marked user message is required; never guess a chat.
-            if(this.adapter.canRebindPending?.(run)){run.chatUrl=this.adapter.url();await this.persist(run);}
-            else throw Error('Der Chat wurde gewechselt oder die Gesprächsadresse konnte noch nicht zugeordnet werden. Öffne den ursprünglichen Chat. Eine fertige Antwort kann über „Vorhandene Antwort übernehmen“ ausdrücklich zugeordnet werden.');
-          }
+          if(!sameConversation(run.chatUrl,this.adapter.url(),!!run.pending||!!run.results.length))throw Error('Der Chat wurde gewechselt. Bitte den ursprünglichen Chat öffnen. Der offene Prompt wird nicht erneut gesendet.');
+          if(conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())){run.chatUrl=this.adapter.url();await this.persist(run);}
           let result;
           if (run.pending) {
             if (run.pending.step!==step.id) throw Error('Der offene Schritt stimmt nicht mit dem Fortschritt überein.');
@@ -166,5 +175,5 @@
     const end=record(22,[[0,0x06054b50,4],[8,entries.length,2],[10,entries.length,2],[12,directorySize,4],[16,offset,4]]);
     return new Blob([...parts,...directory,end],{type:'application/zip'});
   }
-  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,newRun,outputFile,fileManifest,conversationPath,Runner,zip});
+  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,newRun,outputFile,fileManifest,conversationPath,conversationLocation,sameConversation,Runner,zip});
 })();

@@ -39,7 +39,7 @@ def main():
                 '6. Erst danach Ablauf starten / fortsetzen. Am Ende Ergebnisse als ZIP sichern.\r\n\r\n'
                 'UPDATE: Dateien im bisherigen Erweiterungsordner ersetzen, Erweiterung unter chrome://extensions neu laden, danach den ChatGPT-Tab mit F5 neu laden.\r\n'
                 'Eingabefeld nicht erkannt? Im Scanner Chat-Eingabefeld auswählen anklicken, dann direkt in das ChatGPT-Nachrichtenfeld klicken.\r\n\r\n'
-                'Prompt schon gesendet und Antwort fertig, aber Lauf angehalten? Vorhandene Antwort übernehmen anklicken, den fertigen Antworttext auswählen und Zuordnung bestätigen. Danach fortsetzen. Der alte Prompt wird nicht erneut gesendet.\r\n\r\n'
+                'Prompt schon gesendet und Antwort fertig, aber Lauf angehalten? Vorhandene Antwort übernehmen anklicken, die passende Antwortvorschau prüfen und Diese Antwort übernehmen drücken. Zuordnung bestätigen und danach fortsetzen. Der alte Prompt wird nicht erneut gesendet.\r\n\r\n'
                 'Nutzt dein bestehendes ChatGPT-Konto, keine separat berechnete API.\r\n'
                 'Noch nicht am echten ChatGPT-Konto geprüft. Manche Ergebnisdownloads benötigen eine manuelle Übergabe.\r\n'
                 'Anleitung und Grenzen: ANLEITUNG.md (bei Bedarf mit einem Texteditor öffnen).\r\n'

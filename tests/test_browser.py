@@ -507,6 +507,8 @@ class BrowserTests(unittest.TestCase):
         self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
         self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
         self.page.get_by_role('button', name='Vorhandene Antwort übernehmen', exact=True).click()
+        self.page.get_by_text('Keine passende Vorschau?', exact=True).click()
+        self.page.get_by_role('button', name='Antwort direkt im Chat auswählen', exact=True).click()
         self.page.once('dialog', lambda dialog: dialog.accept())
         self.page.locator('#messages .markdown').click()
         self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('1/2 abgeschlossen')")
@@ -529,6 +531,88 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(result['sent'], [])
         self.assertFalse(result['report']['messages']['openPromptRecognized'])
         self.assertNotIn(result['run']['id'], json.dumps(result['report']))
+
+    def test_33_conversation_identity_and_expected_creation(self):
+        checks = self.page.evaluate('''()=>{
+          const same=ProtoScanner.sameConversation;
+          return [same('https://chatgpt.com/','https://chatgpt.com/c/new',true),
+            !same('https://chatgpt.com/','https://chatgpt.com/c/new',false),
+            !same('https://chatgpt.com/c/a','https://chatgpt.com/c/b',true),
+            same('https://chatgpt.com/c/a','https://chatgpt.com/g/g-custom/c/a',true),
+            same('https://chatgpt.com/g/g-custom','https://chatgpt.com/g/g-custom/c/new',true),
+            !same('https://chatgpt.com/','https://other.example/c/new',true),
+            !same('https://chatgpt.com/settings','https://chatgpt.com/c/new',true)];
+        }''')
+        self.assertTrue(all(checks))
+
+    def test_34_initial_conversation_url_changes_while_llm_is_working(self):
+        self.bootstrap(steps=2)
+        result = self.page.evaluate('''async()=>{
+          history.pushState({},'', '/');run.chatUrl=location.href;
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          setTimeout(()=>history.pushState({},'', '/c/created-after-send'),100);
+          await execution;return {run,sent};
+        }''')
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 2)
+        self.assertTrue(result['run']['chatUrl'].endswith('/c/created-after-send'))
+
+    def test_35_initial_url_changes_after_first_result_was_saved(self):
+        self.bootstrap(steps=2)
+        result = self.page.evaluate('''async()=>{
+          history.pushState({},'', '/');run.chatUrl=location.href;let changed=false;
+          runner.save=async value=>{if(!changed && value.results.length===1 && !value.pending){changed=true;history.pushState({},'', '/c/late-created');}};
+          await runner.execute(run,files,assets);return {run,sent};
+        }''')
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 2)
+        self.assertTrue(result['run']['chatUrl'].endswith('/c/late-created'))
+
+    def test_36_switch_between_existing_conversations_still_stops(self):
+        self.bootstrap(steps=2)
+        result = self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          setTimeout(()=>history.pushState({},'', '/c/unrelated-chat'),100);
+          await execution;return {run,sent};
+        }''')
+        self.assertEqual(result['run']['status'], 'angehalten')
+        self.assertIn('Chat gewechselt', result['run']['error'])
+        self.assertEqual(len(result['sent']), 1)
+        self.assertEqual(result['run']['results'], [])
+        self.assertIsNotNone(result['run']['pending'])
+
+    def test_37_answer_preview_can_be_confirmed_inside_panel(self):
+        self.bootstrap(steps=2)
+        self.seed_pending_answer()
+        self.page.evaluate('''()=>{
+          window.browser={storage:{local:{get:async()=>({latestRun:structuredClone(run)}),set:async value=>{window.savedByPanel=value;}}}};
+        }''')
+        self.page.add_script_tag(path=ROOT / 'extension' / 'panel.js')
+        self.page.get_by_role('button', name='Scanner-Ablauf', exact=True).click()
+        self.page.get_by_role('button', name='Vorhandene Antwort übernehmen', exact=True).click()
+        self.assertIn('Alle sechs Dateien', self.page.locator('#recoveryChoices').inner_text())
+        self.page.once('dialog', lambda dialog: dialog.accept())
+        self.page.get_by_role('button', name='Diese Antwort übernehmen', exact=True).click()
+        self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('1/2 abgeschlossen')")
+        self.assertEqual(self.page.evaluate('sent.length'), 0)
+        self.assertTrue(self.page.evaluate('savedByPanel.latestRun.results[0].manuallyAdopted'))
+        self.assertIsNone(self.page.evaluate('savedByPanel.latestRun.pending'))
+
+    def test_38_resume_saved_first_result_with_delayed_creation_address(self):
+        self.bootstrap(steps=2)
+        self.seed_pending_answer()
+        self.page.evaluate('''()=>{
+          run.results=[{step:'1',title:flow.steps[0].title,text:'OK. Bereits gespeicherte Antwort.',assetNames:[]}];
+          run.pending=null;run.chatUrl='https://chatgpt.com/';
+          document.querySelector('[data-message-author-role="user"]').remove();
+        }''')
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 1)
+        self.assertIn('Schritt 2]', result['sent'][0]['prompt'])
+        self.assertEqual(len(result['run']['results']), 2)
 
 
 if __name__ == '__main__':
