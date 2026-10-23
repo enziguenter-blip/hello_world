@@ -1,6 +1,7 @@
 /* No remote scripts, API calls or account credentials. */
 (() => {
   const ns = globalThis.ProtoScanner = globalThis.ProtoScanner || {};
+  ns.version = '0.1.1';
   const read = 'Lies die beigefügten Unterlagen vollständig. Wenn eine Datei nicht lesbar oder nicht vollständig verfügbar ist, benenne das ausdrücklich. Behaupte keine ungeprüfte Vollständigkeit. ';
   ns.defaultWorkflow = {
     version: 1,
@@ -41,8 +42,14 @@
     ]
   };
   ns.defaultSelectors = {
-    composer:'#prompt-textarea',
-    send:'[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Nachricht senden"]',
+    composer:[
+      '#prompt-textarea', '[data-testid="composer-text-input"]', '.ProseMirror[contenteditable="true"]',
+      '[data-lexical-editor="true"][contenteditable="true"]', '[role="textbox"][contenteditable="true"]',
+      '[role="textbox"][contenteditable="plaintext-only"]', '[data-testid="composer"] [contenteditable="true"]',
+      '[data-type="unified-composer"] [contenteditable="true"]', '#composer-background [contenteditable="true"]',
+      'form textarea:not([readonly]):not([disabled])'
+    ].join(', '),
+    send:'[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"], button[aria-label="Nachricht senden"], button[aria-label="Prompt senden"], button[aria-label="Senden"]',
     stop:'[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Antwort stoppen"]',
     assistant:'[data-message-author-role="assistant"]',
     user:'[data-message-author-role="user"]',
@@ -50,5 +57,12 @@
     responseBusy:'[role="progressbar"], progress, [aria-busy="true"], [data-state="loading"]',
     completion:'button[data-testid="copy-turn-action-button"], button[data-testid="good-response-turn-action-button"], button[data-testid="bad-response-turn-action-button"], button[aria-label="Copy"], button[aria-label="Kopieren"], button[aria-label="Antwort kopieren"], button[aria-label="Read aloud"], button[aria-label="Vorlesen"]',
     error:'[data-testid="conversation-turn-error"], [data-testid="error-message"]'
+  };
+  ns.migrateSelectors = saved => {
+    const selectors={...ns.defaultSelectors,...saved};
+    // Upgrade the shipped 0.1.0 defaults without dropping custom selectors.
+    if(selectors.composer==='#prompt-textarea')selectors.composer=ns.defaultSelectors.composer;
+    if(selectors.send==='[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Nachricht senden"]')selectors.send=ns.defaultSelectors.send;
+    return selectors;
   };
 })();

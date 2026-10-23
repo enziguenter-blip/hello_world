@@ -2,6 +2,30 @@
   const ns=globalThis.ProtoScanner;
   const visible=el=>!!el && el.isConnected && el.getClientRects().length>0 && getComputedStyle(el).visibility!=='hidden' && getComputedStyle(el).display!=='none';
   const enabled=el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true';
+  const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest('[data-message-author-role], [role="dialog"], dialog, [role="search"], [inert]');
+  const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
+  ns.composerSelector = el => {
+    if(!editable(el))throw Error('Bitte das beschreibbare Chat-Eingabefeld auswählen.');
+    const kind=el instanceof HTMLTextAreaElement?'textarea':el.tagName.toLowerCase()+'[contenteditable]';
+    const choices=[];
+    if(el.id)choices.push(kind+'#'+CSS.escape(el.id));
+    if(el.dataset.testid)choices.push(kind+'[data-testid="'+CSS.escape(el.dataset.testid)+'"]');
+    if(el.classList.contains('ProseMirror'))choices.push('.ProseMirror[contenteditable="true"]');
+    const unique=selector=>{
+      const matches=[...document.querySelectorAll(selector)].filter(editable);
+      return matches.length===1 && matches[0]===el;
+    };
+    for(const selector of choices)if(unique(selector))return selector;
+    // Positional fallback records structure only, never placeholder/message text.
+    const parts=[];
+    for(let node=el;node&&node!==document.documentElement;node=node.parentElement){
+      const index=[...node.parentElement.children].filter(other=>other.tagName===node.tagName).indexOf(node)+1;
+      parts.unshift(node.tagName.toLowerCase()+`:nth-of-type(${index})`);
+    }
+    const selector='html > '+parts.join(' > ');
+    if(!unique(selector))throw Error('Das Feld lässt sich nicht eindeutig zuordnen. Bitte einen normalen Chat im Hauptfenster verwenden.');
+    return selector;
+  };
   const delay=(ms,signal)=>new Promise((resolve,reject)=>{
     if(signal?.aborted)return reject(new DOMException('Pausiert','AbortError'));
     const done=()=>{signal?.removeEventListener('abort',abort);resolve();};
@@ -11,16 +35,43 @@
   });
   class DOMAdapter {
     constructor(selectors=ns.defaultSelectors,options={}) {
-      this.selectors={...ns.defaultSelectors,...selectors};
+      this.selectors=ns.migrateSelectors(selectors);
       this.pollMs=options.pollMs??500;
       this.stableMs=options.stableMs??1800;
       this.uploadTimeout=options.uploadTimeout??180000;
       this.replyTimeout=options.replyTimeout??7200000;
+      this.composerTimeout=options.composerTimeout??12000;
       this.notify=options.notify||(()=>{});
     }
     url(){return location.href;}
     query(key,root=document){return [...root.querySelectorAll(this.selectors[key])];}
     one(key,root=document){return this.query(key,root).find(visible);}
+    assertChatPage(){
+      if(/^\/(codex|auth|settings)(\/|$)/.test(location.pathname))throw Error('Diese Seite ist kein ChatGPT-Gespräch. Öffne einen Chat auf chatgpt.com und starte die Erweiterung dort.');
+      if([...document.querySelectorAll('[role="dialog"][aria-modal="true"], dialog[open]')].some(visible))throw Error('Bitte zuerst den geöffneten Dialog in ChatGPT schließen.');
+    }
+    findComposer(){
+      if(editable(ns.selectedComposer))return ns.selectedComposer;
+      const select=selector=>[...new Set([...document.querySelectorAll(selector)].flatMap(expand))];
+      const choose=candidates=>{
+        if(candidates.length>1)throw Error('Mehrere mögliche Eingabefelder gefunden. Bitte „Chat-Eingabefeld auswählen“ anklicken und das richtige Feld markieren.');
+        return candidates[0]||null;
+      };
+      if(this.selectors.composer!==ns.defaultSelectors.composer){
+        const custom=select(this.selectors.composer);
+        if(custom.length)return choose(custom);
+      }
+      const candidates=select(ns.defaultSelectors.composer);
+      const known=candidates.filter(el=>el.id==='prompt-textarea' || el.dataset.testid==='composer-text-input' || el.closest('#prompt-textarea, [data-testid="composer"], [data-testid="composer-container"], #composer-background'));
+      return choose(known.length?known:candidates);
+    }
+    diagnose(){
+      const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
+      let selected=null,problem=null;
+      const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
+      try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
+      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe)};
+    }
     async until(check,timeout,description,signal){
       const end=Date.now()+timeout;
       while(Date.now()<end){
@@ -36,9 +87,11 @@
       // Restrict file-preview checks to the composer, never to prior messages.
       const form=composer.closest('form');
       if(form)return form;
+      const known=composer.closest('[data-testid="composer"], [data-testid="composer-container"], [data-type="unified-composer"], #composer-background, #chat-composer');
+      if(known && !known.querySelector('[data-message-author-role]'))return known;
       let parent=composer.parentElement;
       while(parent && parent!==document.body){
-        if(parent.querySelector(this.selectors.send) && !parent.querySelector('[data-message-author-role]'))return parent;
+        if(parent.querySelector(this.selectors.send+', input[type="file"]') && !parent.querySelector('[data-message-author-role]'))return parent;
         parent=parent.parentElement;
       }
       throw Error('Der Eingabebereich konnte nicht eindeutig erkannt werden. Die Oberfläche muss angepasst werden.');
@@ -61,11 +114,15 @@
       return [scope.innerText,...[...scope.querySelectorAll('[title], [aria-label]')].map(el=>`${el.getAttribute('title')||''} ${el.getAttribute('aria-label')||''}`)].join('\n').normalize('NFC');
     }
     async prepare(files,prompt,signal){
+      this.prepared=null;
+      this.assertChatPage();
+      const chat=ns.conversationPath(location.href);
+      const assertSameChat=()=>{if(ns.conversationPath(location.href)!==chat)throw Error('Während der Vorbereitung wurde der Chat gewechselt. Es wurde nichts gesendet.');};
       if(this.one('stop'))throw Error('ChatGPT verarbeitet bereits eine Antwort. Bitte zuerst abwarten.');
-      const composer=this.one('composer');
-      if(!composer)throw Error('ChatGPT-Eingabefeld nicht gefunden. Öffne einen normalen Chat.');
+      this.notify('Suche das ChatGPT-Eingabefeld …');
+      let composer=await this.until(()=>{assertSameChat();return this.findComposer();},this.composerTimeout,'ChatGPT-Eingabefeld nicht erkannt. Klicke im Scanner auf „Chat-Eingabefeld auswählen“ und dann in das Nachrichtenfeld. Mit „Oberfläche prüfen“ lässt sich die Erkennung ohne Senden testen.',signal);
       if(this.composerText(composer))throw Error('Im Chat-Eingabefeld liegt bereits Text. Bitte zuerst sichern und leeren.');
-      const scope=this.scope(composer);
+      let scope=this.scope(composer);
       if(scope.querySelector('[data-testid*="attachment"], [data-testid*="file-thumbnail"], button[aria-label*="Remove file"], button[aria-label*="Datei entfernen"]'))throw Error('Im Eingabefeld liegen bereits Anhänge. Bitte zuerst entfernen.');
       if(files.length){
         const candidates=[...document.querySelectorAll('input[type="file"]')].filter(el=>!el.accept || !/^(audio|video)\//.test(el.accept));
@@ -78,23 +135,38 @@
         input.dispatchEvent(new Event('change',{bubbles:true}));
         this.notify(`Upload: ${files.length} Dateien; warte auf sichtbare Anhänge …`);
         await this.until(()=>{
-          const text=this.attachmentText(scope);
+          assertSameChat();
+          const current=this.findComposer();if(!current)return false;
+          const text=this.attachmentText(this.scope(current));
           return names.every(name=>text.includes(name));
         },this.uploadTimeout,'Nicht alle Dateinamen wurden als Anhänge erkannt. Es wurde kein Prompt gesendet. Prüfe Uploadlimits und die sichtbaren Anhänge.',signal);
       }
+      assertSameChat();
+      composer=this.findComposer();
+      if(!composer)throw Error('Das Nachrichtenfeld wurde während des Uploads ausgeblendet. Bitte die ChatGPT-Seite prüfen.');
+      if(this.composerText(composer))throw Error('Während des Uploads wurde Text in das Eingabefeld geschrieben. Es wurde nichts gesendet. Bitte prüfen und leeren.');
       this.setText(composer,prompt);
       let readySince=0;
       await this.until(()=>{
+        assertSameChat();
+        composer=this.findComposer();if(!composer){readySince=0;return false;}
+        scope=this.scope(composer);
         const compact=value=>value.replace(/\s+/gu,' ').trim();
-        const ready=enabled(this.one('send')) && !this.query('uploadBusy',scope).some(visible) && compact(this.composerText(composer))===compact(prompt);
+        const ready=enabled(this.one('send',scope)) && !this.query('uploadBusy',scope).some(visible) && compact(this.composerText(composer))===compact(prompt);
         if(!ready){readySince=0;return false;}
         readySince=readySince||Date.now();return Date.now()-readySince>=this.stableMs;
       },this.uploadTimeout,'Der Upload oder das Eingabefeld wurde nicht sendebereit. Es wurde kein Prompt gesendet.',signal);
+      this.prepared={prompt,url:chat};
     }
     async send(signal){
       if(signal.aborted)throw new DOMException('Pausiert','AbortError');
-      const button=this.one('send');
+      this.assertChatPage();
+      const composer=this.findComposer();
+      const compact=value=>value.replace(/\s+/gu,' ').trim();
+      if(!this.prepared || this.prepared.url!==ns.conversationPath(location.href) || !composer || compact(this.composerText(composer))!==compact(this.prepared.prompt))throw Error('Chat oder vorbereiteter Prompt wurde verändert. Es wurde nichts gesendet.');
+      const button=this.one('send',this.scope(composer));
       if(!enabled(button) || this.one('stop'))throw Error('Die Senden-Schaltfläche ist nicht verfügbar. Nicht automatisch erneut senden.');
+      this.prepared=null;
       button.click();
     }
     user(marker){return this.query('user').find(el=>el.innerText.includes(marker));}

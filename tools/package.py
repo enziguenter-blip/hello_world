@@ -30,13 +30,15 @@ def main():
                 'Entpackte Erweiterung laden und diesen Ordner auswählen.'
             )
             archive.writestr('START_HIER.txt', (
-                'PROTO-DISPUT - LOKALE TESTVERSION\r\n\r\n'
+                f'PROTO-DISPUT - LOKALE TESTVERSION {manifest["version"]}\r\n\r\n'
                 '1. Dieses ZIP vollständig in einen eigenen Ordner entpacken.\r\n'
                 f'2. {install}\r\n'
                 '3. https://chatgpt.com öffnen oder neu laden. Unten rechts Scanner-Ablauf anklicken.\r\n'
                 '4. Quelldateien einmal auswählen, Dateinamen prüfen, Zielperson eintragen.\r\n'
                 '5. Zuerst Nächsten Schritt testen. Den echten Upload und die fertige Antwort kontrollieren.\r\n'
                 '6. Erst danach Ablauf starten / fortsetzen. Am Ende Ergebnisse als ZIP sichern.\r\n\r\n'
+                'UPDATE: Dateien im bisherigen Erweiterungsordner ersetzen, Erweiterung unter chrome://extensions neu laden, danach den ChatGPT-Tab mit F5 neu laden.\r\n'
+                'Eingabefeld nicht erkannt? Im Scanner Chat-Eingabefeld auswählen anklicken, dann direkt in das ChatGPT-Nachrichtenfeld klicken.\r\n\r\n'
                 'Nutzt dein bestehendes ChatGPT-Konto, keine separat berechnete API.\r\n'
                 'Noch nicht am echten ChatGPT-Konto geprüft. Manche Ergebnisdownloads benötigen eine manuelle Übergabe.\r\n'
                 'Anleitung und Grenzen: ANLEITUNG.md (bei Bedarf mit einem Texteditor öffnen).\r\n'

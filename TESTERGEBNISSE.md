@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Datum: 22. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.1**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -17,7 +17,20 @@ Datum: 22. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Ob
 - Bedienung des Panels vom Auswählen der Dateien bis zum heruntergeladenen Ergebnis-ZIP.
 - Durchlauf der elf konfigurierten Schritte, einschließlich späterer Grafikdateien und getrennter Dateisätze je Schritt.
 
-Der vollständige Testlauf besteht aus **12 Tests: 11 bestanden, 1 übersprungen**. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für die gemeldete Eingabefeld-Störung:
+
+- Fünf Editorvarianten: Textarea mit Testkennung, ProseMirror mit verborgenem altem Textfeld, ein Wrapper mit enthaltenem Editor, Lexical und eine Textarea ohne spezielle Feldkennung.
+- Verzögertes Einblenden und Austausch des Editors nach dem Datei-Upload.
+- Mehrere mögliche Editoren: kein Upload und kein Senden ohne eindeutige Zuordnung.
+- Direkte Auswahl des richtigen Editors im Scanner-Panel bis zum Ergebnis-ZIP.
+- Migration alter Standardselektoren bei Erhalt eigener Selektoren.
+- Eingabebereich ohne `form`, dessen Senden-Knopf erst nach Texteingabe erscheint.
+- Diagnoseausgabe ohne Gesprächstexte, Dateinamen und Gesprächs-ID.
+- Anhalten auf einer Codex-Seite sowie verständlicher Hinweis bei komplett fehlendem Editor.
+- Kein Senden, wenn der vorbereitete Prompt zwischenzeitlich verändert wurde.
+- Keine Auswahl eines Editors innerhalb einer alten Assistentennachricht.
+
+Der vollständige Testlauf besteht aus **24 Tests: 23 bestanden, 1 übersprungen**; ein Test prüft fünf Editorvarianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 

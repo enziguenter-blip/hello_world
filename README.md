@@ -1,5 +1,7 @@
 # Proto-Disput im ChatGPT-Browser
 
+Aktuelle Version: **0.1.1**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
@@ -33,6 +35,21 @@ Ein temporäres Firefox-Add-on wird beim Beenden des Browsers entfernt. Danach m
 8. Abschließend **Ergebnisse als ZIP** herunterladen. Der Download erfolgt über diesen Knopf, damit der Browser ihn nicht als unerwünschten automatischen Download blockiert.
 
 Die Konfiguration bleibt lokal gespeichert. Die Quelldateien werden nur für die laufende Seite im Arbeitsspeicher gehalten: Nach einem Neuladen müssen dieselben Dateien erneut ausgewählt werden. SHA-256-Prüfsummen verhindern das unbemerkte Fortsetzen mit anderen Quellinhalten. Für andere Gesprächsprotokolle und Vorlagen die Dateizuordnung aktualisieren und einen neuen Lauf anlegen.
+
+## Aktualisierung von 0.1.0 / Eingabefeld nicht gefunden
+
+Version 0.1.0 suchte ausschließlich nach `#prompt-textarea`. Meldet sie „ChatGPT-Eingabefeld nicht gefunden“, obwohl du einen normalen Chat geöffnet hast, kann die Feldkennung oder die gerenderte Editorvariante abweichen. Das ist kein Beleg, dass du auf der falschen Seite bist.
+
+1. Das neue ZIP für deinen Browser von GitHub herunterladen und entpacken. Falls Chrome beim Download `(1)` an den ZIP-Dateinamen anhängt, ist das unproblematisch.
+2. Die entpackten Erweiterungsdateien im **bisher verwendeten Erweiterungsordner** ersetzen. Nicht eine zweite Kopie der Erweiterung parallel installieren.
+3. In Chrome `chrome://extensions` öffnen und auf der Karte **Proto-Disput · Browserablauf** den kreisförmigen **Neu laden**-Pfeil anklicken. Bei Firefox über `about:debugging#/runtime/this-firefox` das temporäre Add-on neu laden.
+4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.1** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
+5. **Oberfläche prüfen** erkennt das Nachrichtenfeld, ohne etwas hochzuladen oder zu senden. Erkennt die Automatik es nicht eindeutig, **Chat-Eingabefeld auswählen** drücken und direkt in das normale Nachrichtenfeld von ChatGPT klicken. Das Scanner-Panel blendet sich während der Auswahl aus. Mit Esc lässt sich abbrechen. Die Zuordnung wird lokal gespeichert.
+6. **Nächsten Schritt testen** anklicken. Ein Lauf mit 0/11 abgeschlossenen Schritten und ohne gesendeten Prompt kann bei Schritt 1 fortgesetzt werden. Es ist kein neuer Lauf nötig, solange Person und Quellen dieselben sind.
+
+Version 0.1.1 unterstützt sichtbare Textareas, ProseMirror-/Lexical-Editoren, Nachrichtenfelder in bekannten Composer-Containern und verzögertes Laden. Verborgene alte Felder und Editoren innerhalb vergangener Nachrichten werden ausgeschlossen. Bei mehreren gleichwertigen Kandidaten hält die Erweiterung an. Gespeicherte Standardselektoren aus 0.1.0 werden aktualisiert; eigene angepasste Selektoren bleiben erhalten.
+
+Falls das Problem bleibt: **Oberfläche prüfen** anklicken und den angezeigten Diagnosetext kopieren. Er enthält Feldkennungen und Zustände, keine Nachrichten, Quelldateinamen oder Datei-/Gesprächsinhalte. Ein Screenshot oder der Gesprächsverlauf ist dafür nicht erforderlich. Die Erkennung ist weiterhin nicht gegen ein angemeldetes ChatGPT-Konto in dieser Cloud verifiziert.
 
 ## Übergabe und Wiederverwendung von Ergebnissen
 

@@ -9,13 +9,15 @@
   </style>
   <button id="toggle" type="button" aria-expanded="false" aria-controls="panel">Scanner-Ablauf</button>
   <section id="panel" hidden aria-label="Proto-Disput Automatisierung">
-    <div class="head"><h2>Proto-Disput · Browserablauf</h2><button id="close" type="button" aria-label="Panel schließen">×</button></div>
+    <div class="head"><h2>Proto-Disput · Browserablauf <small id="version"></small></h2><button id="close" type="button" aria-label="Panel schließen">×</button></div>
     <p class="notice">Lokale Testversion. Nicht an einem angemeldeten ChatGPT-Konto geprüft. Zuerst einen einzelnen Schritt testen. Der gesamte Verlauf ist nicht automatisch vollständig im aktiven Modellkontext.</p>
     <label for="person">Zielperson</label><input id="person" placeholder="z. B. Manuel" autocomplete="off">
     <label for="sources">Quelldateien einmal auswählen</label><input id="sources" type="file" multiple>
     <details><summary>Stattdessen einen Ordner auswählen</summary><input id="folder" type="file" multiple webkitdirectory><p class="muted">Nur die ausgewählten Dateien werden verfügbar. Beim Neuladen müssen sie erneut ausgewählt werden.</p></details>
     <div id="files" class="muted">Noch keine Quelldateien ausgewählt.</div>
     <div class="row"><button id="check" type="button">Dateien prüfen</button><button id="next" type="button">Nächsten Schritt testen</button></div>
+    <div class="row"><button id="pickComposer" type="button">Chat-Eingabefeld auswählen</button><button id="diagnose" type="button">Oberfläche prüfen</button></div>
+    <div id="diagnostics" hidden><p class="muted">Diese Diagnose enthält Feldkennungen und Zustände, keine Gesprächsinhalte oder Dateinamen. Bei Problemen kannst du den Text kopieren und weitergeben.</p><textarea id="diagnosticText" readonly aria-label="Diagnose ohne Gesprächsinhalte"></textarea></div>
     <div class="row"><button id="start" class="primary" type="button">Ablauf starten / fortsetzen</button><button id="pause" type="button" disabled>Pause</button></div>
     <p class="muted">ChatGPT kann während einer Pause weiterarbeiten. Während des Ablaufs im selben Chat bleiben und keine zusätzlichen Nachrichten senden. Dateien, Prompts und Folgeanfragen werden über dein Konto an ChatGPT gesendet.</p>
     <div id="status" class="status" role="status" aria-live="polite">Bereit zur Einrichtung.</div>
@@ -42,7 +44,8 @@
   </section>`;
   document.documentElement.append(host);
   const $=id=>shadow.getElementById(id);
-  let files=[],assets={},run=null,runner=null,selectors=structuredClone(ns.defaultSelectors);
+  let files=[],assets={},run=null,runner=null,picking=false,cancelPick=null,selectors=structuredClone(ns.defaultSelectors);
+  $('version').textContent='v'+ns.version;
   const storage={
     async get(){return api?.storage?api.storage.local.get(['latestRun','workflow','selectors']):{};},
     async set(value){if(api?.storage)await api.storage.local.set(value);}
@@ -51,10 +54,10 @@
   const guard=fn=>async(...args)=>{try{$('error').textContent='';await fn(...args);}catch(e){error(e);}};
   const config=()=>ns.validateWorkflow(JSON.parse($('workflow').value));
   function paint(){
-    const busy=!!runner?.running;
-    for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets'])$(id).disabled=busy;
+    const busy=!!runner?.running || picking;
+    for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','pickComposer','diagnose'])$(id).disabled=busy;
     $('person').disabled=busy || !!run;
-    $('pause').disabled=!busy;
+    $('pause').disabled=!runner?.running;
     if(run){
       $('person').value=run.person;
       $('status').textContent=`${run.status} · ${run.results.length}/${run.flow.steps.length} abgeschlossen${run.pending?' · offener Schritt '+run.pending.step:''}`;
@@ -78,7 +81,42 @@
   }
   $('sources').addEventListener('change',choose);$('folder').addEventListener('change',choose);
   const toggle=open=>{$('panel').hidden=!open;$('toggle').setAttribute('aria-expanded',String(open));};
-  $('toggle').onclick=()=>toggle($('panel').hidden);$('close').onclick=()=>toggle(false);
+  $('toggle').onclick=()=>{if(cancelPick)cancelPick();else toggle($('panel').hidden);};$('close').onclick=()=>toggle(false);
+  $('diagnose').onclick=guard(async()=>{
+    const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose();
+    $('diagnostics').hidden=false;$('diagnosticText').value=JSON.stringify(report,null,2);
+    $('status').textContent=report.selected?'Das Nachrichtenfeld wurde erkannt. Es wurde nichts gesendet.':'Kein eindeutiges Nachrichtenfeld erkannt. Bitte „Chat-Eingabefeld auswählen“ verwenden.';
+    if(report.problem)throw Error(report.problem);
+  });
+  $('pickComposer').onclick=guard(async()=>{
+    if(runner?.running)return;
+    new ns.DOMAdapter(selectors).assertChatPage();
+    picking=true;paint();toggle(false);
+    $('toggle').textContent='Jetzt ins Nachrichtenfeld klicken · Esc zum Abbrechen';
+    let timer;
+    const cleanup=()=>{
+      document.removeEventListener('click',pick,true);document.removeEventListener('keydown',key,true);
+      clearTimeout(timer);picking=false;cancelPick=null;$('toggle').textContent='Scanner-Ablauf';toggle(true);paint();
+    };
+    const key=event=>{if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();cleanup();$('status').textContent='Feldauswahl abgebrochen.';}};
+    const pick=async event=>{
+      if(event.composedPath().includes(host))return;
+      event.preventDefault();event.stopImmediatePropagation();
+      const target=event.composedPath()[0];
+      const el=target instanceof Element?target.closest('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'):null;
+      if(!el){$('toggle').textContent='Bitte direkt ins Nachrichtenfeld klicken · Esc zum Abbrechen';return;}
+      try{
+        const selector=ns.composerSelector(el);
+        document.removeEventListener('click',pick,true);
+        selectors={...selectors,composer:selector};ns.selectedComposer=el;
+        await storage.set({selectors});$('selectors').value=JSON.stringify(selectors,null,2);
+        cleanup();$('error').textContent='';$('status').textContent='Nachrichtenfeld zugeordnet. Bitte „Nächsten Schritt testen“ wählen.';
+      }catch(e){cleanup();error(e);}
+    };
+    cancelPick=cleanup;
+    document.addEventListener('click',pick,true);document.addEventListener('keydown',key,true);
+    timer=setTimeout(()=>{cleanup();$('status').textContent='Feldauswahl nach 60 Sekunden beendet. Du kannst sie erneut starten.';},60000);
+  });
   $('check').onclick=guard(async()=>{
     const errors=ns.preflight(run?.flow||config(),files);
     if(errors.length)throw Error(errors.join('\n'));
@@ -134,12 +172,12 @@
       if(typeof updated[key]!=='string'||!updated[key].trim())throw Error(`Selektor fehlt: ${key}`);
       document.querySelector(updated[key]);
     }
-    selectors=updated;await storage.set({selectors});$('status').textContent='Oberflächenadapter lokal gespeichert.';
+    selectors=ns.migrateSelectors(updated);ns.selectedComposer=null;await storage.set({selectors});$('selectors').value=JSON.stringify(selectors,null,2);$('status').textContent='Oberflächenadapter lokal gespeichert.';
   });
   guard(async()=>{
     const saved=await storage.get();
     $('workflow').value=JSON.stringify(saved.workflow||ns.defaultWorkflow,null,2);
-    selectors={...ns.defaultSelectors,...saved.selectors};$('selectors').value=JSON.stringify(selectors,null,2);
+    selectors=ns.migrateSelectors(saved.selectors);$('selectors').value=JSON.stringify(selectors,null,2);
     if(saved.latestRun){run=saved.latestRun;run.status=run.status==='läuft'?'pausiert':run.status;run.error=run.error||'Gespeicherter Lauf geladen. Bitte dieselben Quelldateien erneut auswählen. Ein offener Schritt wird nicht erneut gesendet.';}
     paint();
   })();
