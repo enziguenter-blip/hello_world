@@ -66,7 +66,8 @@
   const config=()=>ns.validateWorkflow(JSON.parse($('workflow').value));
   function paint(){
     const busy=!!runner?.running || picking;
-    for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','pickComposer','diagnose'])$(id).disabled=busy;
+    for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','pickComposer'])$(id).disabled=busy;
+    $('diagnose').disabled=picking;
     $('adoptAnswer').disabled=busy || !run?.pending;
     $('pickAnswerPage').disabled=busy || !run?.pending;
     for(const button of $('recoveryChoices').querySelectorAll('button'))button.disabled=busy;
@@ -97,12 +98,12 @@
   $('sources').addEventListener('change',choose);$('folder').addEventListener('change',choose);
   const toggle=open=>{$('panel').hidden=!open;$('toggle').setAttribute('aria-expanded',String(open));};
   $('toggle').onclick=()=>{if(cancelPick)cancelPick();else toggle($('panel').hidden);};$('close').onclick=()=>toggle(false);
-  $('diagnose').onclick=guard(async()=>{
-    const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose(run?.pending?.marker,run?.chatUrl,run?.lastNavigationFailure||null);
-    $('diagnostics').hidden=false;$('diagnosticText').value=JSON.stringify(report,null,2);
-    $('status').textContent=report.selected?'Das Nachrichtenfeld wurde erkannt. Es wurde nichts gesendet.':'Kein eindeutiges Nachrichtenfeld erkannt. Bitte „Chat-Eingabefeld auswählen“ verwenden.';
-    if(report.problem)throw Error(report.problem);
-  });
+  $('diagnose').onclick=()=>{
+    try{
+      const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose(run?.pending?.marker,run?.chatUrl,run?.lastNavigationFailure||null);
+      $('diagnostics').hidden=false;$('diagnosticText').value=JSON.stringify(report,null,2);
+    }catch(e){error(e);}
+  };
   function pickFromPage(instruction,match,accept){
     picking=true;paint();toggle(false);
     $('toggle').textContent=instruction+' · Esc zum Abbrechen';

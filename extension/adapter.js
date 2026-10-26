@@ -5,6 +5,7 @@
   const enabled=el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true';
   const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest(historySelector+', [role="dialog"], dialog, [role="search"], [inert]');
   const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
+  ns.isBareAcknowledgement=text=>/^ok[.!]?$/iu.test(String(text).normalize('NFKC').trim());
   ns.matchesSourcesAcknowledgement=(text,person,count)=>{
     const value=String(text).normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
     const target=String(person||'').normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
@@ -83,7 +84,8 @@
       let selected=null,problem=null;
       const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
       try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
-      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,recognizedReplies:this.answerCandidates().length,completionActions:this.completionActions(document).length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},routing:{current:ns.routeSummary(location.href),saved:savedUrl?ns.routeSummary(savedUrl):null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null,lastRejectedTransition:lastNavigationFailure}};
+      const actions=this.completionActions(document);
+      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,recognizedReplies:this.answerCandidates().length,completionActions:actions.length,visibleCompletionActions:actions.filter(visible).length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},routing:{current:ns.routeSummary(location.href),saved:savedUrl?ns.routeSummary(savedUrl):null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null,lastRejectedTransition:lastNavigationFailure}};
     }
     async until(check,timeout,description,signal){
       const end=Date.now()+timeout;
@@ -199,7 +201,9 @@
     }
     genericReplies(){
       const found=[];
-      for(const action of this.completionActions(document).filter(visible)){
+      // Response actions can be hidden until hover. Their message body must
+      // still be rendered; active generation is checked separately below.
+      for(const action of this.completionActions(document)){
         if(action.closest('nav, aside, header, dialog, [role="dialog"]'))continue;
         const cached=this.genericActionRoots.get(action);
         if(cached?.isConnected&&cached.contains(action)&&!cached.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')){found.push(cached);continue;}
@@ -211,7 +215,7 @@
           // Ignore the user's own copied prompt and choose the smallest text
           // container associated with a response action, never the whole page.
           if(/proto.disput[\s\S]{0,8}[0-9a-f]{8}-[0-9a-f-]{27}/iu.test(text))break;
-          if(parent.querySelector('p,pre,blockquote,[data-lexical-text],.markdown') || text.length>40){found.push(parent);this.genericReplyRoots.add(parent);this.genericActionRoots.set(action,parent);break;}
+          if(parent.querySelector('p,pre,blockquote,[data-lexical-text],.markdown') || text.length>40 || ns.isBareAcknowledgement(text)){found.push(parent);this.genericReplyRoots.add(parent);this.genericActionRoots.set(action,parent);break;}
         }
       }
       return [...new Set(found)];
@@ -227,9 +231,10 @@
     acknowledgementAnswer(context){
       if(context?.acknowledgement?.type!=='sources-readable')return null;
       const candidates=this.answerCandidates();
-      const protocolMatches=candidates.filter(el=>ns.matchesSourcesAcknowledgement(this.text(el),context.person,context.acknowledgement.fileCount));
+      const isProtocolReply=el=>ns.isBareAcknowledgement(this.text(el))||ns.matchesSourcesAcknowledgement(this.text(el),context.person,context.acknowledgement.fileCount);
+      const protocolMatches=candidates.filter(isProtocolReply);
       const matching=candidates.filter(el=>{
-        if(!ns.matchesSourcesAcknowledgement(this.text(el),context.person,context.acknowledgement.fileCount))return false;
+        if(!isProtocolReply(el))return false;
         const before=context.pending?.beforeReply;
         if(before?.assistants){
           const current=this.messageStamp(el);
@@ -237,7 +242,7 @@
         }
         // Old pending runs have no baseline. Only an unambiguous first exchange
         // with this exact acknowledgement is eligible for automatic recovery.
-        return protocolMatches.length===1 && this.messages('user').length<=1 && candidates.at(-1)===el;
+        return protocolMatches.length===1 && this.messages('user').length<=1 && candidates.at(-1)===el && (!ns.isBareAcknowledgement(this.text(el))||candidates.length===1);
       });
       return matching.length===1?matching[0]:null;
     }

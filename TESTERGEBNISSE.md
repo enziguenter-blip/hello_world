@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.5**, 26. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.6**, 26. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -53,7 +53,7 @@ Zusätzliche Prüfungen für die verspätete Gesprächsadresse und die unklare K
 Zusätzliche Prüfungen für den automatischen Übergang ohne OK-Bestätigung:
 
 - Die vom Nutzer zitierte OK-Antwort für Günter führt ohne erkannte Nutzer-Markierung automatisch zu Schritt 2; kein manuell übernommenes Ergebnis, kein erneutes Senden von Schritt 1 und kein Fortschalten während der Generierung.
-- Bei dieser zusätzlichen Erkennung starten ein falscher Name, eine falsche Dateianzahl, eine negative Lesbarkeitsmeldung und ein nicht zuordenbares bloßes „OK“ keinen ungeprüften Folgeschritt.
+- Bei der ausführlichen zusätzlichen Bestätigung starten ein falscher Name, eine falsche Dateianzahl und eine negative Lesbarkeitsmeldung keinen ungeprüften Folgeschritt. Das ausdrücklich verlangte bloße „OK“ wird seit 0.1.6 mit einer passenden neuen Antwort oder eindeutigen ersten Bestätigung akzeptiert; dazu gelten die unten genannten eigenen Prüfungen.
 - Ein alter angehaltener erster Schritt lässt sich anhand der eindeutigen fertigen Bestätigung fortsetzen; nur Schritt 2 wird gesendet.
 - Eine vor dem neuen Senden vorhandene OK-Antwort wird durch die gespeicherte Ausgangslage ausgeschlossen.
 - Mehrdeutige alte Bestätigungen werden nicht automatisch ausgewählt.
@@ -67,7 +67,15 @@ Zusätzliche Prüfungen anhand der echten Diagnose aus Version 0.1.4:
 - Eine Diagnose des tatsächlich abgewiesenen Adresswechsels enthält weder Gesprächs-IDs noch Projekt-/Abfrage-/Fragmentwerte.
 - Ein gespeicherter offener erster Schritt behält während des Fortsetzens seinen ursprünglichen Startseiten-Bezugspunkt und wird ohne Wiederholung übernommen.
 
-Der vollständige Testlauf besteht aus **48 Tests: 47 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen anhand „OK sichtbar, Antwortbereich nicht erkannt“:
+
+- Ein Antworttext aus nur zwei Zeichen in einem `span`, ohne Nachrichtenkennungen oder Absatzstruktur, wird bei ausgeblendeten Antwortaktionen erkannt. Schritt 2 beginnt nach Ende der Generierung automatisch, ohne manuelle Übernahme.
+- Ein neues bloßes „OK“ kann auch bei nicht dargestellter Nutzer-Markierung als erwartete erste Protokollantwort zugeordnet werden.
+- Ein bereits vor dem Senden vorhandenes „OK“ bleibt von der neuen Anfrage ausgeschlossen.
+- Die Diagnose kann während der Generierung ohne Pause geöffnet werden. Der Fortschritt bleibt unverändert, und der automatische Ablauf schließt anschließend ab.
+- Eine bloße OK-Antwort ohne erkanntes Abschluss-Signal startet keinen Folgeschritt.
+
+Der vollständige Testlauf besteht aus **53 Tests: 52 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 

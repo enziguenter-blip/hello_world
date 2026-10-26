@@ -31,15 +31,15 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  if('value' in composer)composer.value='';else composer.textContent='';previews.replaceChildren();input.value='';
  const stop=document.createElement('button');if(!window.semanticFree)stop.dataset.testid='stop-button';else stop.setAttribute('aria-label','Stop generating');stop.textContent='Stop';document.body.append(stop);
  const article=document.createElement(window.semanticFree?'section':'article');const assistant=document.createElement('div');if(!window.semanticFree)assistant.dataset.messageAuthorRole='assistant';else assistant.contentEditable='false';
- const markdown=document.createElement(window.semanticFree?'p':'div');if(!window.semanticFree)markdown.className='markdown';markdown.textContent='Zwischenstand '+n;assistant.append(markdown);article.append(assistant);document.querySelector('#messages').append(article);
+ const markdown=document.createElement(window.semanticFree?(window.bareFirstBodyLayout&&n===1?'span':'p'):'div');if(!window.semanticFree)markdown.className='markdown';markdown.textContent='Zwischenstand '+n;assistant.append(markdown);article.append(assistant);document.querySelector('#messages').append(article);
  setTimeout(()=>{
-   if(!window.omitCompletion){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';article.append(copy);}
+   if(!window.omitCompletion){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';article.append(copy);}
  },80);
  setTimeout(()=>{markdown.textContent=window.answerTextByTurn?.[n]||'Endfassung '+n;
    if(window.makeAsset || window.assetSteps?.includes(n)){const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img');img.src=URL.createObjectURL(svg);assistant.append(img);}
    if(window.sandboxLink){const a=document.createElement('a');a.href='sandbox:/mnt/data/bericht.pdf';a.textContent='bericht.pdf';assistant.append(a);}
  },140);
- setTimeout(()=>{stop.remove();window.finished.push(Date.now());if(window.failResponse){const e=document.createElement('div');e.dataset.testid='error-message';e.textContent='Testfehler';document.body.append(e);}},240);
+ setTimeout(()=>{stop.remove();window.finished.push(Date.now());if(window.failResponse){const e=document.createElement('div');e.dataset.testid='error-message';e.textContent='Testfehler';document.body.append(e);}},window.finishDelay||240);
 };
 </script></body></html>'''
 
@@ -646,7 +646,7 @@ class BrowserTests(unittest.TestCase):
         self.assertGreaterEqual(result['sent'][1]['at'], result['finished'][0])
 
     def test_40_incomplete_or_wrong_acknowledgement_never_advances(self):
-        for answer in [self.ACK.replace('Günter', 'Manuel'), self.ACK.replace('sechs', 'fünf'), self.ACK.replace('vollständig', 'nicht vollständig'), 'OK.']:
+        for answer in [self.ACK.replace('Günter', 'Manuel'), self.ACK.replace('sechs', 'fünf'), self.ACK.replace('vollständig', 'nicht vollständig')]:
             with self.subTest(answer=answer):
                 self.page.goto(URL)
                 for name in ['workflow.js', 'core.js', 'adapter.js']:
@@ -787,6 +787,75 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
         self.assertEqual(len(result['sent']), 1)
         self.assertIn('Schritt 2]',result['sent'][0]['prompt'])
+
+    def test_49_two_character_ok_without_paragraph_and_hover_only_controls(self):
+        self.bootstrap_acknowledgement()
+        self.semantic_free_editor()
+        self.page.evaluate("omitFirstUserMarker=false;answerTextByTurn[1]='OK';bareFirstBodyLayout=true;hideResponseActions=true")
+        result = self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertEqual(result['run']['results'][0]['text'],'OK')
+        self.assertFalse(result['run']['results'][0]['manuallyAdopted'])
+        self.assertGreaterEqual(result['sent'][1]['at'],result['finished'][0])
+        report = self.page.evaluate('adapter.diagnose()')
+        self.assertEqual(report['messages']['users'],0)
+        self.assertEqual(report['messages']['assistants'],0)
+        self.assertEqual(report['messages']['recognizedReplies'],2)
+        self.assertEqual(report['messages']['visibleCompletionActions'],0)
+
+    def test_50_bare_ok_is_valid_first_protocol_reply_without_marker(self):
+        self.bootstrap_acknowledgement()
+        self.semantic_free_editor()
+        self.page.evaluate("answerTextByTurn[1]='OK';bareFirstBodyLayout=true")
+        result = self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(result['run']['results'][0]['recognition'],'sources-acknowledgement')
+        self.assertEqual(result['run']['results'][0]['text'],'OK')
+        self.assertEqual(len(result['sent']),2)
+
+    def test_51_old_ok_is_excluded_by_pre_send_snapshot(self):
+        self.bootstrap_acknowledgement()
+        self.seed_pending_answer()
+        self.page.evaluate('''()=>{
+          run.pending=null;existingAnswer.querySelector('.markdown').textContent='OK';
+          document.querySelector('[data-message-author-role="user"]').textContent='Vorheriger anderer Prompt';
+          window.answerTextByTurn={1:'Die Dateien konnten nicht gelesen werden.'};adapter.replyTimeout=450;
+        }''')
+        result = self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
+        self.assertIsNotNone(result['run']['pending'])
+
+    def test_52_live_diagnostics_do_not_require_pause_or_change_progress(self):
+        self.bootstrap_acknowledgement()
+        self.page.evaluate('window.finishDelay=1400')
+        flow=self.page.evaluate('flow');names=self.page.evaluate('files.map(file=>file.name)')
+        self.page.add_script_tag(path=ROOT/'extension'/'panel.js')
+        self.page.get_by_role('button',name='Scanner-Ablauf',exact=True).click()
+        self.page.get_by_text('Dateizuordnung und Prompts bearbeiten',exact=True).click()
+        self.page.locator('#workflow').fill(json.dumps(flow));self.page.locator('#person').fill('Günter')
+        self.page.locator('#sources').set_input_files([{'name':name,'mimeType':'text/markdown','buffer':b'Quelle'} for name in names])
+        self.page.get_by_role('button',name='Automatisch starten / fortsetzen',exact=True).click()
+        self.page.locator('[data-testid="stop-button"]').wait_for()
+        self.page.get_by_text('Diagnose und manuelle Reparatur',exact=True).click()
+        before=self.page.locator('#status').inner_text()
+        self.assertTrue(self.page.get_by_role('button',name='Oberfläche prüfen',exact=True).is_enabled())
+        self.page.get_by_role('button',name='Oberfläche prüfen',exact=True).click()
+        report=json.loads(self.page.locator('#diagnosticText').input_value())
+        self.assertTrue(report['messages']['activeGeneration'])
+        self.assertEqual(self.page.locator('#status').inner_text(),before)
+        self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('fertig')")
+        self.assertEqual(self.page.evaluate('sent.length'),2)
+
+    def test_53_bare_ok_without_completion_signal_does_not_advance(self):
+        self.bootstrap_acknowledgement()
+        self.page.evaluate("omitFirstUserRole=false;omitFirstUserMarker=false;answerTextByTurn[1]='OK';omitCompletion=true;adapter.replyTimeout=450")
+        result = self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
 
 
 if __name__ == '__main__':
