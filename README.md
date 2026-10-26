@@ -1,6 +1,6 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.4**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.5**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
@@ -48,6 +48,16 @@ Der Name wird mit der ausgewählten Zielperson verglichen. Die zusätzliche Erke
 
 Vor dem Senden merkt sich die Erweiterung bereits vorhandene Antworten, damit eine alte OK-Antwort nicht für einen neuen Scan verwendet wird. Ein angehaltener erster Schritt aus einer älteren Version kann ohne erneutes Senden fortgesetzt werden, wenn eine eindeutige passende erste Bestätigung im ursprünglichen Chat vorhanden ist. Dazu nach dem Update im selben Erweiterungsordner und dem Neuladen des Tabs dieselben Dateien auswählen und **Automatisch starten / fortsetzen** drücken. Gespeicherte Standardabläufe werden berücksichtigt; die bestehenden Prompts werden nicht umgeschrieben. Bei dieser zusätzlichen Erkennung wird mit widersprüchlichen oder mehrdeutigen Bestätigungen nicht ungeprüft weitergeschaltet.
 
+## Version 0.1.5: Fehlalarm beim Adresswechsel und null Nachrichtenkennungen
+
+Eine reale Diagnose aus Version 0.1.4 zeigte `currentPageKind: conversation`, `savedPageKind: new-chat` und `sameConversation: true`, zugleich aber null Nutzer-, Assistenten- und Gesprächs-Turn-Kennungen. Der nachträglich zulässige Adressvergleich erklärt nicht den vorherigen Abbruch; ein kurzzeitiger anderer Adresszustand während der Generierung bleibt möglich. Die Diagnose belegt außerdem, dass die bisher abgefragten Nachrichtenkennungen auf dieser Oberfläche fehlen.
+
+Version **0.1.5** legt die Identität des ersten Gesprächs deshalb erst mit der fertig erkannten Antwort fest. Während die erste Antwort entsteht, bleibt die ursprüngliche Startseitenadresse der Bezugspunkt; vorläufige Gesprächs-ID → Startseite → endgültige Gesprächs-ID führt nicht mehr zum vorzeitigen Festlegen auf eine Zwischenadresse. Das gilt auch beim Fortsetzen eines gespeicherten offenen ersten Schritts. Ein Wechsel zwischen bereits festgelegten bestehenden Gesprächen wird weiterhin angehalten.
+
+Für Oberflächen ohne die bekannten Nachrichtenattribute werden zusätzlich die eindeutige eigene Schrittmarkierung im Text und Antwortbereiche mit erkannten Abschlussaktionen (etwa „Copy response“/„Antwort kopieren“) verwendet. Eingabefelder, Navigationsbereiche, Skripte, Code-Kopierknöpfe und die eigene Erweiterung werden dabei ausgeschlossen. Schreibgeschützte Nachrichten mit `contenteditable="false"` bleiben lesbar. Die automatische Erkennung verlangt weiterhin eine zuordenbare Antwort und ein Abschluss-Signal; reines Verstreichen einer Zeit löst keinen Folgeschritt aus.
+
+**Oberfläche prüfen** zeigt zusätzlich erkannte Antwortbereiche und Abschlussaktionen. Ein zukünftiger abgewiesener Adresswechsel wird mit Phase und anonymisiertem Adressmuster (z. B. `/c/<segment>`) gespeichert. Gesprächs-IDs, Projektnamen, Abfragewerte und Textinhalte werden dafür nicht ausgegeben. Diese neuen Diagnosefelder ersetzen nicht den noch ausstehenden Test im angemeldeten Benutzerkonto.
+
 ## Aktualisierung von 0.1.0 / Eingabefeld nicht gefunden
 
 Version 0.1.0 suchte ausschließlich nach `#prompt-textarea`. Meldet sie „ChatGPT-Eingabefeld nicht gefunden“, obwohl du einen normalen Chat geöffnet hast, kann die Feldkennung oder die gerenderte Editorvariante abweichen. Das ist kein Beleg, dass du auf der falschen Seite bist.
@@ -55,7 +65,7 @@ Version 0.1.0 suchte ausschließlich nach `#prompt-textarea`. Meldet sie „Chat
 1. Das neue ZIP für deinen Browser von GitHub herunterladen und entpacken. Falls Chrome beim Download `(1)` an den ZIP-Dateinamen anhängt, ist das unproblematisch.
 2. Die entpackten Erweiterungsdateien im **bisher verwendeten Erweiterungsordner** ersetzen. Nicht eine zweite Kopie der Erweiterung parallel installieren.
 3. In Chrome `chrome://extensions` öffnen und auf der Karte **Proto-Disput · Browserablauf** den kreisförmigen **Neu laden**-Pfeil anklicken. Bei Firefox über `about:debugging#/runtime/this-firefox` das temporäre Add-on neu laden.
-4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.4** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
+4. Den ursprünglichen ChatGPT-Tab mit F5 neu laden. Im Scanner-Panel muss **v0.1.5** stehen. Die Quelldateien erneut auswählen; der gespeicherte Lauf bleibt bei derselben Erweiterungsinstallation erhalten.
 5. **Oberfläche prüfen** erkennt das Nachrichtenfeld, ohne etwas hochzuladen oder zu senden. Erkennt die Automatik es nicht eindeutig, **Chat-Eingabefeld auswählen** drücken und direkt in das normale Nachrichtenfeld von ChatGPT klicken. Das Scanner-Panel blendet sich während der Auswahl aus. Mit Esc lässt sich abbrechen. Die Zuordnung wird lokal gespeichert.
 6. **Automatisch starten / fortsetzen** anklicken. Ein bereits gesendeter offener Schritt wird nicht erneut gesendet. Es ist kein neuer Lauf nötig, solange Person und Quellen dieselben sind.
 

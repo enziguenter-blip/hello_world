@@ -76,19 +76,29 @@
     // Only a previously attempted/completed step permits this initial binding.
     return allowCreation && a.kind==='new-chat' && b.kind==='conversation';
   }
+  function routeSummary(url){
+    const u=new URL(url),route=conversationLocation(url),known=new Set(['c','g','project','projects','chat','chats','codex','auth','settings','u']);
+    return {kind:route.kind,shape:'/'+u.pathname.split('/').filter(Boolean).map(part=>known.has(part)?part:'<segment>').join('/'),hasQuery:!!u.search,hasHash:!!u.hash};
+  }
+  function navigationFailure(from,to,phase){
+    const a=conversationLocation(from),b=conversationLocation(to),error=new Error('Die Gesprächsadresse konnte während der Verarbeitung nicht zugeordnet werden. Der offene Prompt bleibt erhalten. Bitte „Oberfläche prüfen“ verwenden.');
+    error.navigationFailure={phase,from:routeSummary(from),to:routeSummary(to),sameOrigin:a.origin===b.origin,sameConversationId:a.id&&b.id?a.id===b.id:null,observedAt:new Date().toISOString()};
+    return error;
+  }
   class Runner {
     constructor(adapter,save,onChange) { this.adapter=adapter; this.save=save; this.onChange=onChange; this.running=false; this.controller=null; }
     pause() { this.controller?.abort(); }
     async persist(run) { await this.save(run); this.onChange(run); }
     async recordResult(run,step,result,assets,signal,manual=false){
-      const chat=conversationPath(this.adapter.url());
+      const creating=run.pending&&!run.results.length&&conversationLocation(run.chatUrl).kind==='new-chat';
+      const chat=creating?run.chatUrl:conversationPath(this.adapter.url());
       const supplied=Object.entries(assets).filter(([key])=>key.startsWith(`${step.id}/`)).map(([,file])=>file);
       const captured=await this.adapter.collectAssets(result.element,signal);
       if(step.requireAsset && !captured.files.length && !supplied.length)throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Bitte die Datei prüfen und gegebenenfalls über „Ergebnisdateien ergänzen“ zuordnen.');
       if(captured.errors.length && !supplied.length)throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
       const unique=[...new Map([...supplied,...captured.files].map(file=>[file.name,file])).values()];
       if(signal.aborted)throw new DOMException('Pausiert','AbortError');
-      if(!sameConversation(chat,this.adapter.url(),!!run.pending||!!run.results.length))throw Error('Während der Ergebnisübernahme wurde der Chat gewechselt.');
+      if(!sameConversation(chat,this.adapter.url(),!!run.pending||!!run.results.length))throw navigationFailure(chat,this.adapter.url(),'capture');
       for(const file of unique)assets[`${step.id}/${file.name}`]=file;
       run.results.push({step:step.id,title:step.title,text:result.text,assetNames:unique.map(f=>f.name),manuallySupplied:!!supplied.length,manuallyAdopted:manual,recognition:manual?'manual':result.recognition||'marker',assetWarnings:captured.errors,completedAt:new Date().toISOString()});
       run.pending=null;run.chatUrl=this.adapter.url();delete run.error;
@@ -125,13 +135,14 @@
         for (let i=run.results.length; i<run.flow.steps.length; i++) {
           const step=run.flow.steps[i];
           if (signal.aborted) throw new DOMException('Pausiert','AbortError');
-          if(!sameConversation(run.chatUrl,this.adapter.url(),!!run.pending||!!run.results.length))throw Error('Der Chat wurde gewechselt. Bitte den ursprünglichen Chat öffnen. Der offene Prompt wird nicht erneut gesendet.');
-          if(conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())){run.chatUrl=this.adapter.url();await this.persist(run);}
+          if(!sameConversation(run.chatUrl,this.adapter.url(),!!run.pending||!!run.results.length))throw navigationFailure(run.chatUrl,this.adapter.url(),'resume');
+          const creating=run.pending&&!run.results.length&&conversationLocation(run.chatUrl).kind==='new-chat';
+          if(!creating && conversationPath(run.chatUrl)!==conversationPath(this.adapter.url())){run.chatUrl=this.adapter.url();await this.persist(run);}
           let result;
           if (run.pending) {
             if (run.pending.step!==step.id) throw Error('Der offene Schritt stimmt nicht mit dem Fortschritt überein.');
             // Never resubmit an uncertain send after interruption/reload.
-            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending});
+            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending,chatUrl:run.chatUrl});
           } else {
             const files=resolveFiles(step.files,selectedFiles);
             for (const id of step.reuse) {
@@ -150,7 +161,7 @@
             run.pending={step:step.id,marker:markerFor(run,step),preparedAt:new Date().toISOString(),beforeReply:this.adapter.snapshotConversation?.()||null};
             await this.persist(run);
             await this.adapter.send(signal);
-            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending});
+            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending,chatUrl:run.chatUrl});
           }
           await this.recordResult(run,step,result,assets,signal);
           await this.persist(run);
@@ -159,6 +170,7 @@
         run.status='fertig'; await this.persist(run);
       } catch(e) {
         run.status=signal.aborted?'pausiert':'angehalten'; run.error=e.message;
+        if(e.navigationFailure)run.lastNavigationFailure=e.navigationFailure;
         try { await this.persist(run); } catch(storageError) { this.onChange({...run,error:`${e.message}\nLokale Sicherung fehlgeschlagen: ${storageError.message}`}); }
       } finally { this.running=false; this.onChange(run); }
       return run;
@@ -181,5 +193,5 @@
     const end=record(22,[[0,0x06054b50,4],[8,entries.length,2],[10,entries.length,2],[12,directorySize,4],[16,offset,4]]);
     return new Blob([...parts,...directory,end],{type:'application/zip'});
   }
-  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,acknowledgementFor,newRun,outputFile,fileManifest,conversationPath,conversationLocation,sameConversation,Runner,zip});
+  Object.assign(ns,{safeName,validateWorkflow,resolveFiles,preflight,markerFor,promptFor,acknowledgementFor,newRun,outputFile,fileManifest,conversationPath,conversationLocation,sameConversation,routeSummary,navigationFailure,Runner,zip});
 })();

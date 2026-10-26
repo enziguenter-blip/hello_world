@@ -25,14 +25,15 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  const composer=window.fixtureComposer;
  const record={prompt:'value' in composer?composer.value:composer.innerText,names:[...input.files].map(f=>f.name),text:await Promise.all([...input.files].map(f=>f.text())),at:Date.now()};
  window.sent.push(record);const n=window.sent.length;
- const user=document.createElement('div');user.dataset.messageAuthorRole='user';user.textContent=record.prompt;document.querySelector('#messages').append(user);
+ const user=document.createElement('div');if(!window.semanticFree)user.dataset.messageAuthorRole='user';else user.contentEditable='false';user.textContent=record.prompt;document.querySelector('#messages').append(user);
  if(window.omitFirstUserRole && n===1)user.removeAttribute('data-message-author-role');
+ if(window.omitFirstUserMarker && n===1)user.textContent=record.prompt.split('[Proto-Disput')[0];
  if('value' in composer)composer.value='';else composer.textContent='';previews.replaceChildren();input.value='';
- const stop=document.createElement('button');stop.dataset.testid='stop-button';stop.textContent='Stop';document.body.append(stop);
- const article=document.createElement('article');const assistant=document.createElement('div');assistant.dataset.messageAuthorRole='assistant';
- const markdown=document.createElement('div');markdown.className='markdown';markdown.textContent='Zwischenstand '+n;assistant.append(markdown);article.append(assistant);document.querySelector('#messages').append(article);
+ const stop=document.createElement('button');if(!window.semanticFree)stop.dataset.testid='stop-button';else stop.setAttribute('aria-label','Stop generating');stop.textContent='Stop';document.body.append(stop);
+ const article=document.createElement(window.semanticFree?'section':'article');const assistant=document.createElement('div');if(!window.semanticFree)assistant.dataset.messageAuthorRole='assistant';else assistant.contentEditable='false';
+ const markdown=document.createElement(window.semanticFree?'p':'div');if(!window.semanticFree)markdown.className='markdown';markdown.textContent='Zwischenstand '+n;assistant.append(markdown);article.append(assistant);document.querySelector('#messages').append(article);
  setTimeout(()=>{
-   if(!window.omitCompletion){const copy=document.createElement('button');copy.dataset.testid='copy-turn-action-button';copy.textContent='Kopieren';article.append(copy);}
+   if(!window.omitCompletion){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';article.append(copy);}
  },80);
  setTimeout(()=>{markdown.textContent=window.answerTextByTurn?.[n]||'Endfassung '+n;
    if(window.makeAsset || window.assetSteps?.includes(n)){const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img');img.src=URL.createObjectURL(svg);assistant.append(img);}
@@ -430,8 +431,8 @@ class BrowserTests(unittest.TestCase):
           adapter.userTimeout=30;
           const execution=runner.execute(run,files,assets);
           while(!sent.length)await new Promise(r=>setTimeout(r,5));
-          const user=document.querySelector('[data-message-author-role="user"]');user.removeAttribute('data-message-author-role');
-          setTimeout(()=>user.dataset.turn='user',150);
+          const user=document.querySelector('[data-message-author-role="user"]'),original=user.textContent;user.removeAttribute('data-message-author-role');user.textContent='Prompt wird verarbeitet';
+          setTimeout(()=>{user.dataset.turn='user';user.textContent=original;},150);
           await execution;return {run,sent};
         }''')
         self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
@@ -583,7 +584,8 @@ class BrowserTests(unittest.TestCase):
           await execution;return {run,sent};
         }''')
         self.assertEqual(result['run']['status'], 'angehalten')
-        self.assertIn('Chat gewechselt', result['run']['error'])
+        self.assertEqual(result['run']['lastNavigationFailure']['phase'], 'reply')
+        self.assertFalse(result['run']['lastNavigationFailure']['sameConversationId'])
         self.assertEqual(len(result['sent']), 1)
         self.assertEqual(result['run']['results'], [])
         self.assertIsNotNone(result['run']['pending'])
@@ -629,7 +631,7 @@ class BrowserTests(unittest.TestCase):
           flow.steps[0].files=['quelle.md','zwei.md','drei.md','vier.md','fuenf.md','sechs.md'];
           files=flow.steps[0].files.map(name=>new File(['Quelle '+name],name,{type:'text/markdown'}));
           run=ProtoScanner.newRun('Günter',flow,location.href);
-          window.omitFirstUserRole=true;window.answerTextByTurn={1:ack};
+          window.omitFirstUserRole=true;window.omitFirstUserMarker=true;window.answerTextByTurn={1:ack};
         }''', self.ACK)
 
     def test_39_exact_customer_acknowledgement_starts_step_two_automatically(self):
@@ -664,7 +666,8 @@ class BrowserTests(unittest.TestCase):
           delete run.flow.steps[0].acknowledgement;
           existingAnswer.querySelector('.markdown').textContent=ack;
           document.querySelector('[data-message-author-role="user"]').removeAttribute('data-message-author-role');
-          run.chatUrl='https://chatgpt.com/';window.omitFirstUserRole=false;
+          document.querySelector('#messages > div').textContent='Früherer Prompt ohne sichtbare Markierung';
+          run.chatUrl='https://chatgpt.com/';window.omitFirstUserRole=false;window.omitFirstUserMarker=false;
         }''', self.ACK)
         result = self.execute()
         self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
@@ -694,6 +697,7 @@ class BrowserTests(unittest.TestCase):
           existingAnswer.querySelector('.markdown').textContent=ack;
           const another=existingAnswer.parentElement.cloneNode(true);another.dataset.testid='conversation-turn-3';existingAnswer.parentElement.after(another);
           document.querySelector('[data-message-author-role="user"]').removeAttribute('data-message-author-role');
+          document.querySelector('#messages > div').textContent='Frühere nicht eindeutig zugeordnete Anfrage';
           adapter.replyTimeout=300;
         }''', self.ACK)
         result = self.execute()
@@ -719,6 +723,70 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(dialogs, [])
         self.assertFalse(self.page.locator('#manualTools').evaluate('el=>el.open'))
         self.assertIn('2/2 abgeschlossen', self.page.locator('#status').inner_text())
+
+    def semantic_free_editor(self):
+        self.page.evaluate('''()=>{
+          window.semanticFree=true;window.omitFirstUserRole=false;
+          fixtureComposer.removeAttribute('id');fixtureComposer.style.minHeight='40px';
+          const hidden=fixtureComposer.cloneNode();hidden.hidden=true;fixtureComposer.before(hidden);
+        }''')
+
+    def test_45_zero_message_attributes_and_provisional_urls_run_both_steps(self):
+        self.bootstrap_acknowledgement()
+        self.semantic_free_editor()
+        result = self.page.evaluate('''async()=>{
+          window.omitFirstUserMarker=false;history.pushState({},'', '/');run.chatUrl=location.href;
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          setTimeout(()=>history.pushState({},'', '/c/provisional-private-id'),30);
+          setTimeout(()=>history.pushState({},'', '/'),80);
+          setTimeout(()=>history.pushState({},'', '/c/final-private-id'),130);
+          await execution;return {run,sent,report:adapter.diagnose(null,run.chatUrl)};
+        }''')
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 2)
+        self.assertEqual(result['run']['chatUrl'], 'https://chatgpt.com/c/final-private-id')
+        self.assertEqual(result['report']['messages']['users'], 0)
+        self.assertEqual(result['report']['messages']['assistants'], 0)
+        self.assertEqual(result['report']['messages']['conversationTurns'], 0)
+        self.assertEqual(result['report']['messages']['recognizedReplies'], 2)
+        self.assertNotIn('private-id', json.dumps(result['report']))
+
+    def test_46_strong_ack_and_readonly_messages_without_any_old_attributes(self):
+        self.bootstrap_acknowledgement()
+        self.semantic_free_editor()
+        self.page.evaluate("window.copyLabel='Antwort kopieren'")
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 2)
+        self.assertEqual(result['run']['results'][0]['recognition'], 'sources-acknowledgement')
+        self.assertEqual(result['run']['results'][0]['text'], self.ACK)
+        self.assertEqual(result['run']['results'][1]['text'], 'Endfassung 2')
+
+    def test_47_navigation_trace_redacts_ids_names_and_query_values(self):
+        report = self.page.evaluate('''()=>{
+          const failure=ProtoScanner.navigationFailure('https://chatgpt.com/c/SECRET_FIRST_ID?token=SECRET_TOKEN','https://chatgpt.com/g/PRIVATE_PROJECT/c/SECRET_SECOND_ID#PRIVATE_HASH','reply');
+          return new ProtoScanner.DOMAdapter().diagnose(null,'https://chatgpt.com/',failure.navigationFailure);
+        }''')
+        serialized=json.dumps(report)
+        self.assertNotIn('SECRET_',serialized)
+        self.assertNotIn('PRIVATE_',serialized)
+        self.assertFalse(report['routing']['lastRejectedTransition']['sameConversationId'])
+        self.assertEqual(report['routing']['lastRejectedTransition']['to']['shape'],'/g/<segment>/c/<segment>')
+
+    def test_48_resume_pending_first_step_keeps_original_creation_anchor(self):
+        self.bootstrap_acknowledgement()
+        self.seed_pending_answer()
+        self.page.evaluate('''ack=>{
+          existingAnswer.querySelector('.markdown').textContent=ack;
+          run.chatUrl='https://chatgpt.com/';window.omitFirstUserRole=false;window.omitFirstUserMarker=false;
+          setTimeout(()=>history.pushState({},'', '/'),20);
+          setTimeout(()=>history.pushState({},'', '/c/final-resumed-id'),50);
+        }''',self.ACK)
+        result = self.execute()
+        self.assertEqual(result['run']['status'], 'fertig', result['run'].get('error'))
+        self.assertEqual(len(result['sent']), 1)
+        self.assertIn('Schritt 2]',result['sent'][0]['prompt'])
 
 
 if __name__ == '__main__':

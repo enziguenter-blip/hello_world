@@ -53,6 +53,7 @@
       this.replyTimeout=options.replyTimeout??7200000;
       this.composerTimeout=options.composerTimeout??12000;
       this.userTimeout=options.userTimeout??60000;
+      this.markerNodes=new Map();this.genericReplyRoots=new WeakSet();this.genericActionRoots=new WeakMap();
       this.notify=options.notify||(()=>{});
     }
     url(){return location.href;}
@@ -77,12 +78,12 @@
       const known=candidates.filter(el=>el.id==='prompt-textarea' || el.dataset.testid==='composer-text-input' || el.closest('#prompt-textarea, [data-testid="composer"], [data-testid="composer-container"], #composer-background'));
       return choose(known.length?known:candidates);
     }
-    diagnose(marker=null,savedUrl=null){
+    diagnose(marker=null,savedUrl=null,lastNavigationFailure=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
       let selected=null,problem=null;
       const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
       try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
-      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},routing:{currentPageKind:ns.conversationLocation(location.href).kind,savedPageKind:savedUrl?ns.conversationLocation(savedUrl).kind:null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null}};
+      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,recognizedReplies:this.answerCandidates().length,completionActions:this.completionActions(document).length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},routing:{current:ns.routeSummary(location.href),saved:savedUrl?ns.routeSummary(savedUrl):null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null,lastRejectedTransition:lastNavigationFailure}};
     }
     async until(check,timeout,description,signal){
       const end=Date.now()+timeout;
@@ -186,6 +187,35 @@
       const nodes=[...new Set([...this.query(role),...document.querySelectorAll(ns.defaultSelectors[role])])];
       return nodes.filter(node=>!nodes.some(other=>other!==node && node.contains(other)));
     }
+    bodyText(el){
+      const clone=el.cloneNode(true);
+      clone.querySelectorAll('button, [role="button"], [role="toolbar"], input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"], script, style, svg, [hidden], [aria-hidden="true"], .sr-only').forEach(node=>node.remove());
+      clone.querySelectorAll('br').forEach(node=>node.replaceWith(document.createTextNode('\n')));
+      clone.querySelectorAll('p,div,pre,li,tr,section,h1,h2,h3,h4,blockquote').forEach(node=>node.append(document.createTextNode('\n')));
+      return (clone.textContent||'').trim();
+    }
+    completionActions(root){
+      return [...new Set([...this.query('completion',root),...root.querySelectorAll(ns.defaultSelectors.completion)])].filter(el=>!el.closest('pre, code, form, [contenteditable="true"], [contenteditable="plaintext-only"], #proto-disput-extension'));
+    }
+    genericReplies(){
+      const found=[];
+      for(const action of this.completionActions(document).filter(visible)){
+        if(action.closest('nav, aside, header, dialog, [role="dialog"]'))continue;
+        const cached=this.genericActionRoots.get(action);
+        if(cached?.isConnected&&cached.contains(action)&&!cached.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')){found.push(cached);continue;}
+        let parent=action.parentElement;
+        for(let depth=0;parent&&depth<12;depth++,parent=parent.parentElement){
+          if(parent.matches('body,main,[role="main"],html') || parent.querySelector('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'))break;
+          const text=this.bodyText(parent);
+          if(!text)continue;
+          // Ignore the user's own copied prompt and choose the smallest text
+          // container associated with a response action, never the whole page.
+          if(/proto.disput[\s\S]{0,8}[0-9a-f]{8}-[0-9a-f-]{27}/iu.test(text))break;
+          if(parent.querySelector('p,pre,blockquote,[data-lexical-text],.markdown') || text.length>40){found.push(parent);this.genericReplyRoots.add(parent);this.genericActionRoots.set(action,parent);break;}
+        }
+      }
+      return [...new Set(found)];
+    }
     messageStamp(el){
       const source=el.closest('[data-message-id]')||el.querySelector('[data-message-id]');
       const id=source?.getAttribute('data-message-id')||el.closest('[data-testid^="conversation-turn-"]')?.getAttribute('data-testid')||null;
@@ -217,29 +247,43 @@
       const compact=value=>String(value||'').normalize('NFKC').replace(/[\u00ad\u200b-\u200d\ufeff]/gu,'').replace(/[^\p{L}\p{N}\]]/gu,'').toLowerCase();
       const expected=compact(marker);
       if(!expected)return null;
-      return this.messages('user').find(el=>{
+      const matches=el=>{
         const content=compact(el.textContent);
         return content.includes(expected) || (expected.endsWith(']') && content.endsWith(expected.slice(0,-1)));
-      });
+      };
+      const known=this.messages('user').find(matches);if(known)return known;
+      const cached=this.markerNodes.get(marker);if(cached?.isConnected&&matches(cached))return cached;
+      const fragment=marker.match(/[0-9a-f]{8}-[0-9a-f-]{27}/iu)?.[0]?.slice(0,8);
+      if(!fragment)return null;
+      const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+      for(let node=walker.nextNode();node;node=walker.nextNode()){
+        if(!node.textContent.toLowerCase().includes(fragment.toLowerCase()))continue;
+        if(node.parentElement?.closest('script,style,template,noscript,textarea,[contenteditable="true"],[contenteditable="plaintext-only"],#proto-disput-extension'))continue;
+        let parent=node.parentElement;
+        for(let depth=0;parent&&depth<10;depth++,parent=parent.parentElement){
+          if(parent.matches('body,main,html,[role="main"]') || parent.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]'))break;
+          if(matches(parent)){this.markerNodes.set(marker,parent);return parent;}
+        }
+      }
+      return null;
     }
-    turn(el){return el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement;}
+    turn(el){return this.genericReplyRoots.has(el)?el:el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement;}
     text(el){
       const blocks=[...el.querySelectorAll('.markdown')];
-      return (blocks.length?blocks.map(b=>b.innerText).join('\n\n'):el.innerText).trim();
+      return (blocks.length?blocks.map(b=>b.innerText).join('\n\n'):this.bodyText(el)).trim();
     }
     async waitForReply(marker,signal,context=null){
-      let chat=ns.conversationPath(location.href);
+      const chat=context?.chatUrl||ns.conversationPath(location.href);
       let previous='',stableSince=0,idleSince=Date.now();
       this.notify('Warte auf die vollständige Antwort von ChatGPT …');
       return this.until(()=>{
-        if(!ns.sameConversation(chat,location.href,true))throw Error('Während der Verarbeitung wurde der Chat gewechselt.');
-        chat=ns.conversationPath(location.href);
+        if(!ns.sameConversation(chat,location.href,true))throw ns.navigationFailure(chat,location.href,'reply');
         const user=this.user(marker);
         let reply=null,recognition='marker';
         if(user){
           const following=el=>!!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING);
           if(this.messages('user').some(el=>el!==user && following(el)))throw Error('Nach dem automatischen Prompt wurde eine weitere Nachricht gesendet. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
-          reply=this.messages('assistant').filter(following).at(-1);
+          reply=this.answerCandidates().filter(following).at(-1);
         }
         if(!reply){reply=this.acknowledgementAnswer(context);if(reply)recognition='sources-acknowledgement';}
         if(!user && !reply && !context?.acknowledgement){
@@ -250,7 +294,7 @@
         const turn=this.turn(reply);
         const busy=this.query('responseBusy',turn).some(visible);
         const images=[...reply.querySelectorAll('img')].filter(visible);
-        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.query('completion',turn).length){stableSince=0;return false;}
+        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length){stableSince=0;return false;}
         const text=this.text(reply);
         const signature=text+'\n'+images.map(img=>img.currentSrc||img.src).join('\n');
         if(!text && !images.length)return false;
@@ -259,7 +303,7 @@
       },this.replyTimeout,'Die Antwort wurde nicht als vollständig erkannt. Der Lauf bleibt beim offenen Schritt. Prüfe den Chat und gegebenenfalls die Abschluss-Selektoren.',signal);
     }
     answerAt(target){
-      if(!(target instanceof Element) || target.closest('form, [contenteditable], textarea, #proto-disput-extension'))return null;
+      if(!(target instanceof Element) || target.closest('form, [contenteditable="true"], [contenteditable="plaintext-only"], textarea, #proto-disput-extension'))return null;
       if(this.messages('user').some(el=>el===target || el.contains(target)))return null;
       const specific=this.messages('assistant').find(el=>el===target || el.contains(target));
       if(specific)return specific;
@@ -270,7 +314,7 @@
     answerCandidates(){
       const known=this.messages('assistant');
       const fallback=[...document.querySelectorAll('article[data-testid^="conversation-turn-"]')].filter(el=>el.querySelector('.markdown') && this.answerAt(el)===el);
-      const nodes=[...new Set([...known,...fallback])];
+      const nodes=[...new Set([...known,...fallback,...this.genericReplies()])];
       const rendered=nodes.filter(el=>visible(el)||[...el.children].some(visible));
       return rendered.filter(el=>!rendered.some(other=>other!==el && el.contains(other))).sort((a,b)=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
     }

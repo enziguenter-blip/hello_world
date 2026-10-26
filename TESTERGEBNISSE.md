@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.4**, 23. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.5**, 26. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -59,7 +59,15 @@ Zusätzliche Prüfungen für den automatischen Übergang ohne OK-Bestätigung:
 - Mehrdeutige alte Bestätigungen werden nicht automatisch ausgewählt.
 - Der primäre automatische Start im Panel führt beide Schritte ohne Dialog und ohne Öffnen der manuellen Werkzeuge aus.
 
-Der vollständige Testlauf besteht aus **44 Tests: 43 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen anhand der echten Diagnose aus Version 0.1.4:
+
+- Eine Testoberfläche ohne Nachrichtenrollen, `conversation-turn`-Kennungen oder Markdown-Klassen und mit zwei kennungslosen Textboxen (eine verborgen) führt beide Schritte automatisch aus. Die Diagnose hat weiterhin dieselben Null-Zähler für alte Kennungen, erkennt aber beide Antwortbereiche.
+- Während der ersten Generierung wechseln die Adressen Startseite → vorläufiges Gespräch → Startseite → endgültiges Gespräch. Beide Schritte werden abgeschlossen und der erste Prompt wird nicht wiederholt.
+- Schreibgeschützte Nachrichten und Abschlussaktionen mit „Copy response“ bzw. „Antwort kopieren“ werden verarbeitet; die eigene Schrittmarkierung bzw. die genaue OK-Bestätigung ordnet die Antwort zu.
+- Eine Diagnose des tatsächlich abgewiesenen Adresswechsels enthält weder Gesprächs-IDs noch Projekt-/Abfrage-/Fragmentwerte.
+- Ein gespeicherter offener erster Schritt behält während des Fortsetzens seinen ursprünglichen Startseiten-Bezugspunkt und wird ohne Wiederholung übernommen.
+
+Der vollständige Testlauf besteht aus **48 Tests: 47 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
