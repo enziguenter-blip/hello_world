@@ -31,6 +31,10 @@ def main():
             )
             archive.writestr('START_HIER.txt', (
                 f'PROTO-DISPUT - LOKALE TESTVERSION {manifest["version"]}\r\n\r\n'
+                'VERSION 0.1.7 - DIAGNOSE: Die gemeldete nicht erkannte OK-Antwort ist noch nicht repariert.\r\n'
+                'Bei diesem Fehler nach dem Update im ursprünglichen Chat Diagnose und manuelle Reparatur > Oberfläche prüfen öffnen und den vollständigen Diagnosetext kopieren.\r\n'
+                'Dafür keine Quelldateien auswählen und den Ablauf nicht erneut starten. Kein weiteres HTML von Hand kopieren.\r\n\r\n'
+                'Allgemeine Bedienung für Oberflächen mit funktionierender Antworterkennung:\r\n'
                 '1. Dieses ZIP vollständig in einen eigenen Ordner entpacken.\r\n'
                 f'2. {install}\r\n'
                 '3. https://chatgpt.com öffnen oder neu laden. Unten rechts Scanner-Ablauf anklicken.\r\n'

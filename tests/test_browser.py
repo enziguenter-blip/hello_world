@@ -849,6 +849,53 @@ class BrowserTests(unittest.TestCase):
         self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#status').textContent.includes('fertig')")
         self.assertEqual(self.page.evaluate('sent.length'),2)
 
+    def test_54_structure_probe_distinguishes_separate_response_actions(self):
+        for separate in [False, True]:
+            with self.subTest(separate=separate):
+                self.page.evaluate('''()=>{
+                  document.querySelector('#messages').replaceChildren();
+                  document.querySelector('#detached-actions')?.remove();
+                }''')
+                self.page.evaluate('''separate=>{
+                  const section=document.createElement('section');
+                  section.innerHTML='<p class="TextBase-qM5iDq Text-nubxrT" data-d-text-flow="" data-d-component="text"><span data-d-text-flow="word" data-d-stream-word="">OK</span></p>';
+                  document.querySelector('#messages').append(section);
+                  const actions=document.createElement('div');actions.id='detached-actions';
+                  actions.innerHTML='<button aria-label="Copy response">Kopieren</button><button aria-label="Read aloud">Vorlesen</button>';
+                  (separate?document.body:section).append(actions);
+                }''', separate)
+                report=self.page.evaluate('new ProtoScanner.DOMAdapter().diagnose()')
+                structure=report['replyStructure']
+                self.assertEqual(structure['textBlocks'],1)
+                self.assertEqual(structure['streamWords'],1)
+                self.assertEqual(len(structure['actionPaths']),2)
+                shared=set(structure['textPaths'][0]) & set(structure['actionPaths'][0])
+                suitable=[node for node in structure['nodes'] if node['node'] in shared and not node['boundary'] and not node['containsEditor']]
+                self.assertEqual(bool(suitable),not separate)
+                self.assertEqual(report['messages']['recognizedReplies'],0 if separate else 1)
+
+    def test_55_structure_probe_does_not_export_contents_or_change_the_page(self):
+        self.bootstrap(steps=1)
+        report=self.page.evaluate('''()=>{
+          const section=document.createElement('section');section.id='PRIVATE_MESSAGE_ID';section.className='PRIVATE_CLASS';
+          const text=document.createElement('p');text.setAttribute('data-d-component','text');text.setAttribute('data-d-text-flow','');
+          const word=document.createElement('span');word.setAttribute('data-d-stream-word','');word.textContent='PRIVATE_CONVERSATION';text.append(word);section.append(text);
+          const button=document.createElement('button');button.setAttribute('aria-label','Copy response');button.setAttribute('title','PRIVATE_TITLE');button.textContent='PRIVATE_BUTTON';section.append(button);
+          document.querySelector('#messages').append(section);
+          fixtureComposer.textContent='PRIVATE_INPUT';document.querySelector('#previews').textContent='PRIVATE_FILENAME.pdf';
+          run.pending={step:'1',marker:'PRIVATE_MARKER'};
+          const before={html:document.documentElement.outerHTML,run:JSON.stringify(run)};
+          const report=adapter.diagnose(run.pending.marker);
+          return {report,unchanged:before.html===document.documentElement.outerHTML&&before.run===JSON.stringify(run),sent:sent.length};
+        }''')
+        self.assertNotIn('PRIVATE_',json.dumps(report['report']))
+        self.assertNotIn('offline-test',json.dumps(report['report']))
+        self.assertTrue(report['unchanged'])
+        self.assertEqual(report['sent'],0)
+        structure=report['report']['replyStructure']
+        self.assertTrue(any(node['containsEditor'] for node in structure['nodes']))
+        self.assertTrue(all(0<=index<len(structure['nodes']) for path in structure['textPaths']+structure['actionPaths'] for index in path))
+
     def test_53_bare_ok_without_completion_signal_does_not_advance(self):
         self.bootstrap_acknowledgement()
         self.page.evaluate("omitFirstUserRole=false;omitFirstUserMarker=false;answerTextByTurn[1]='OK';omitCompletion=true;adapter.replyTimeout=450")

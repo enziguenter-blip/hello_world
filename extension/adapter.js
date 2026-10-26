@@ -79,13 +79,50 @@
       const known=candidates.filter(el=>el.id==='prompt-textarea' || el.dataset.testid==='composer-text-input' || el.closest('#prompt-textarea, [data-testid="composer"], [data-testid="composer-container"], #composer-background'));
       return choose(known.length?known:candidates);
     }
+    replyStructure(marker=null){
+      // Read-only structural evidence. Local numbers link shared ancestors;
+      // never export page HTML, text, classes, IDs, labels or attribute values.
+      const textSelector='[data-d-component="text"][data-d-text-flow]';
+      const excluded='textarea,[contenteditable="true"],[contenteditable="plaintext-only"],#proto-disput-extension';
+      const blocks=[...document.querySelectorAll(textSelector)].filter(el=>!el.closest(excluded));
+      const words=[...document.querySelectorAll('[data-d-stream-word]')].filter(el=>!el.closest(excluded));
+      const actions=this.completionActions(document);
+      const prompt=marker?this.user(marker):null;
+      const nodes=[],indices=new Map();
+      const describe=el=>{
+        if(indices.has(el))return indices.get(el);
+        const number=nodes.length;indices.set(el,number);
+        const boundary=el.matches('body,main,[role="main"],html');
+        const containsEditor=!!el.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]');
+        // Match the existing discovery checks without reading entire chat/page
+        // containers or exporting even the first characters of private text.
+        const text=boundary||containsEditor?null:this.bodyText(el);
+        nodes.push({node:number,tag:el.tagName.toLowerCase(),visible:visible(el),
+          attributes:['data-d-component','data-d-text-flow','data-d-stream-word','data-message-author-role','data-turn','data-testid','contenteditable','aria-busy'].filter(name=>el.hasAttribute(name)),
+          boundary,containsEditor,containsPrompt:!!prompt&&(el===prompt||el.contains(prompt)),
+          excludedActionArea:!!el.closest('nav,aside,header,dialog,[role="dialog"],pre,code,form'),
+          textBlocks:el.querySelectorAll(textSelector).length,streamWords:el.querySelectorAll('[data-d-stream-word]').length,
+          completionActions:actions.filter(action=>action===el||el.contains(action)).length,
+          hasBodyText:text===null?null:!!text,
+          eligibleBody:text===null?null:!!text&&(!!el.querySelector('p,pre,blockquote,[data-lexical-text],.markdown')||text.length>40||ns.isBareAcknowledgement(text))});
+        return number;
+      };
+      const chain=el=>{
+        const ancestors=[];
+        for(let depth=0;el&&depth<24;depth++,el=el.parentElement){ancestors.push(describe(el));if(el===document.documentElement)break;}
+        return ancestors;
+      };
+      const samples=(blocks.length?blocks:words).slice(-3);
+      return {textBlocks:blocks.length,streamWords:words.length,
+        textPaths:samples.map(chain),actionPaths:actions.slice(-4).map(chain),nodes};
+    }
     diagnose(marker=null,savedUrl=null,lastNavigationFailure=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
       let selected=null,problem=null;
       const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
       try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
       const actions=this.completionActions(document);
-      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,recognizedReplies:this.answerCandidates().length,completionActions:actions.length,visibleCompletionActions:actions.filter(visible).length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},routing:{current:ns.routeSummary(location.href),saved:savedUrl?ns.routeSummary(savedUrl):null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null,lastRejectedTransition:lastNavigationFailure}};
+      return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,recognizedReplies:this.answerCandidates().length,completionActions:actions.length,visibleCompletionActions:actions.filter(visible).length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},replyStructure:this.replyStructure(marker),routing:{current:ns.routeSummary(location.href),saved:savedUrl?ns.routeSummary(savedUrl):null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null,lastRejectedTransition:lastNavigationFailure}};
     }
     async until(check,timeout,description,signal){
       const end=Date.now()+timeout;

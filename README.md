@@ -1,10 +1,18 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.6**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.7**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.7: Strukturdiagnose für die weiterhin offene Antworterkennung
+
+**Dies ist eine Diagnoseversion, keine bestätigte Reparatur des Wartens auf „OK“.** Die automatische Antworterkennung bleibt gegenüber 0.1.6 unverändert. Die tatsächlich gemeldete Oberfläche wird weiterhin nicht zuverlässig zugeordnet.
+
+Unter **Diagnose und manuelle Reparatur → Oberfläche prüfen** enthält `replyStructure` jetzt die Elternketten der letzten `data-d-component="text"`-Absätze bzw. `data-d-stream-word`-Elemente und der erkannten Antwortknöpfe. Lokale Nummern zeigen gemeinsame Vorfahren. Grenzcontainer, enthaltene Eingabefelder, der eigene Prompt und die bisherigen Ausschlussgründe werden als Strukturmerkmale sichtbar. So muss der Nutzer die HTML-Hierarchie nicht weiter von Hand kopieren.
+
+Diese Ergänzung liest die Seite nur. Sie sendet oder bestätigt nichts und exportiert keine Gesprächsinhalte, HTML, Klassen, Element-IDs, Beschriftungen oder Attributwerte. Sie übermittelt auch nichts automatisch. Bei sichtbarer fertiger OK-Antwort den Diagnosetext kopieren und für die Fehlersuche bereitstellen; der erste Prompt soll nicht erneut gesendet werden.
 
 ## Installation unter Firefox (Testversion)
 

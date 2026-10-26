@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.6**, 26. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.7**, 26. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -75,7 +75,13 @@ Zusätzliche Prüfungen anhand „OK sichtbar, Antwortbereich nicht erkannt“:
 - Die Diagnose kann während der Generierung ohne Pause geöffnet werden. Der Fortschritt bleibt unverändert, und der automatische Ablauf schließt anschließend ab.
 - Eine bloße OK-Antwort ohne erkanntes Abschluss-Signal startet keinen Folgeschritt.
 
-Der vollständige Testlauf besteht aus **53 Tests: 52 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Strukturdiagnose in Version 0.1.7:
+
+- Der tatsächlich gelieferte Absatz `<p class="TextBase-qM5iDq Text-nubxrT" data-d-text-flow="" data-d-component="text"><span data-d-text-flow="word" data-d-stream-word="">OK</span></p>` wird unverändert in zwei Testanordnungen verwendet. Die Strukturdiagnose unterscheidet einen gemeinsamen Antwortcontainer von getrennten Ästen für Text und Knöpfe über lokale Knotennummern.
+- Der neue Strukturbericht exportiert keine Gesprächs-/Eingabetexte, Dateinamen, HTML, Element-IDs, Klassen oder Attributwerte. Sie verändert weder Seiten-HTML noch den gespeicherten Lauf und sendet keine Nachricht.
+- **Die Antworterkennung wurde in 0.1.7 nicht geändert.** In der getrennten Testanordnung bleibt der Fehler reproduzierbar. Die Diagnose soll zunächst die tatsächlichen übergeordneten Container sichtbar machen; eine Reparatur oder ein erfolgreicher Live-Durchlauf wird damit nicht behauptet.
+
+Der vollständige Testlauf besteht aus **55 Tests: 54 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -87,4 +93,6 @@ Der vollständige Testlauf besteht aus **53 Tests: 52 bestanden, 1 übersprungen
 
 ## Nächster Praxistest
 
-Unter Windows **Automatisch starten / fortsetzen** verwenden und den direkten Übergang von der fertigen OK-Antwort zu den Uploads für Schritt 2 beobachten. Der Einzelschritt-Test liegt nur im Bereich **Diagnose und manuelle Reparatur** und pausiert absichtlich. Insbesondere Schritt 5 und 7 müssen mit den tatsächlichen Bild- und Downloadfunktionen des gewählten ChatGPT-Modells erprobt werden. Die Testversion ist noch keine als vollständig unbeaufsichtigt verifizierte Lösung.
+Im ursprünglichen Chat mit sichtbarer fertiger OK-Antwort und Version **0.1.7** unter **Diagnose und manuelle Reparatur → Oberfläche prüfen** den vollständigen Diagnosetext einschließlich `replyStructure` erfassen. Keine HTML-Elemente von Hand auswählen und den ersten Prompt nicht erneut senden. Diese Diagnose erfordert keine Quelldateiauswahl und startet den Ablauf nicht. Erst anhand dieser Struktur soll die weiterhin offene Antwortzuordnung gezielt repariert werden.
+
+Ein vollständiger automatischer Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 sind weiterhin an der echten Oberfläche zu erproben.
