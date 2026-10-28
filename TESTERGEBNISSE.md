@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.9**, 28. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.10**, 28. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -103,7 +103,18 @@ Zusätzliche Prüfungen für das eingebettete Dojo-Dokument in Version 0.1.9:
 - Auch ein Dokument innerhalb einer zusätzlich semantisch gekennzeichneten Assistentennachricht wird den außerhalb liegenden Antwortknöpfen zugeordnet.
 - Alle elf Schritte laufen mit vier eingebetteten Dokumenteditoren und Bildern durch. Frühere Dokumente werden in späteren Schritten wiederverwendet; alle Dokumenteditoren bleiben von den Eingaben der Steuerung unberührt.
 
-Der vollständige Testlauf besteht aus **69 Tests: 68 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für die Grafikübernahme in Version 0.1.10:
+
+- Eine Grafik erscheint erst nach dem Generierungsende des Begleittextes. Der Folgeschritt wartet auf die Bilddatei. Dieser Test scheiterte vor der Änderung an der gemeldeten allgemeinen Fehlermeldung.
+- Ein Downloadfehler mit HTTP 403 bleibt sichtbar und wird nicht durch die allgemeine Meldung über eine fehlende Grafik verdeckt. Auch dieser Test scheiterte vor der Änderung.
+- Eine Bildantwort ohne normalen Antworttext oder Antwortknöpfe verwendet das vom Nutzer gezeigte HTML-Format: `img`, Inline-PNG, `data-loaded` und weiterhin vorhandene `LoadingImage`-Klasse. Die lokalen PNG-Bytes werden bei absichtlich gesperrtem `fetch` exakt übernommen und dem nächsten Schritt übergeben. Die Testgrafik enthält keine privaten Bildinhalte.
+- Ein alter offener Bildschritt ohne gespeicherte Bild-Fingerabdrücke wird mit neuem Adapter fortgesetzt. Bereits gesendete Prompts werden nicht wiederholt.
+- Alte Grafiken, eine Beispielgrafik hinter dem Marker im Nutzerbereich und eine schon vor dem Senden vorhandene Bildvorschau beenden den Bildschritt nicht.
+- Die Bilddiagnose enthält Maße, Ladezustand und Strukturpfade, keine Bilddaten, Bildadressen oder Alt-Texte.
+- Alle elf Schritte laufen mit vier Dokumenteditoren sowie verzögerten reinen Inline-Bildantworten in Schritt 5 und 7 durch. Schritt 8 erhält beide PNG-Dateien und die früheren Dokumenttexte; die Dokumenteditoren bleiben unbeschrieben.
+- Eine nach einem Dateifehler ausdrücklich zugeordnete Ersatzgrafik erhält beim Fortsetzen die Erkennung der reinen Bildantwort. Der Prompt wird nicht erneut gesendet. Zwei voneinander getrennte Bildbereiche werden nicht durch Auswahl des letzten Bildes aufgelöst.
+
+Die Gesamtprüfung deckt **79 Tests ab: 78 bestanden, 1 übersprungen**. Der vollständige Lauf der Tests 1–77 bestand in 116,980 Sekunden mit einem übersprungenen Test. Die danach ergänzten Tests 78–79 wurden zusammen mit dem bestehenden Test 4 separat erfolgreich ausgeführt. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -115,6 +126,6 @@ Der vollständige Testlauf besteht aus **69 Tests: 68 bestanden, 1 übersprungen
 
 ## Nächster Praxistest
 
-Version **0.1.9** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Ein nach F5 nur als Dokumentkarte angezeigtes Dojo vor dem Fortsetzen öffnen. Der offene Dojo-Schritt soll anhand des vorhandenen Dokuments abgeschlossen werden und direkt Schritt 3 beginnen; bereits gesendete Prompts werden nicht erneut gesendet. „Oberfläche prüfen“ ist weiterhin ein Scanner-Knopf.
+Version **0.1.10** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Schritt 5 soll anhand der vorhandenen sichtbaren Grafik abgeschlossen werden und direkt Schritt 6 beginnen; bereits gesendete Prompts werden nicht erneut gesendet. „Oberfläche prüfen“ ist weiterhin ein Scanner-Knopf und liefert jetzt auch Bild-Strukturangaben.
 
 Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.

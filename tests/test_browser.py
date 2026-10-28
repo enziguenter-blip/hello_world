@@ -2,6 +2,8 @@
 import base64
 import io
 import json
+import struct
+import zlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -11,6 +13,14 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 URL = 'https://chatgpt.com/c/offline-test'
+
+
+def fixture_png(red):
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 128, 128, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress((b'\x00' + bytes([red, 120, 80]) * 128) * 128)) + chunk(b'IEND', b'')
+
+
 FIXTURE = r'''<!doctype html><html><head><meta charset="utf-8"><style>#prompt-textarea{min-height:40px;border:1px solid gray}</style></head><body>
 <main id="messages"></main>
 <form onsubmit="return false">
@@ -28,6 +38,8 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  const user=document.createElement('div');if(!window.semanticFree)user.dataset.messageAuthorRole='user';else user.contentEditable='false';user.textContent=record.prompt;document.querySelector('#messages').append(user);
  if(window.omitFirstUserRole && n===1)user.removeAttribute('data-message-author-role');
  if(window.omitFirstUserMarker && n===1)user.textContent=record.prompt.split('[Proto-Disput')[0];
+ if(window.userCopy&&window.imageOnlyTurns?.includes(n)){const text=document.createElement('span');text.textContent=user.textContent;user.replaceChildren(text);const copy=document.createElement('button');copy.setAttribute('aria-label','Copy');copy.textContent='Kopieren';user.append(copy);}
+ if(window.referenceAfterMarker&&window.imageOnlyTurns?.includes(n)){const img=document.createElement('img');img.src=referencePNG;img.setAttribute('data-loaded','');user.append(img);}
  let exchange,exchangeContent,actionTarget;
  if(window.streamedExchange){
    exchange=document.createElement('div');exchangeContent=document.createElement('div');
@@ -54,7 +66,8 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
    if(!window.omitCompletion&&!window.omitCompletionTurns?.includes(n)){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';(actionTarget||article).append(copy);
      if(window.streamedExchange){const aloud=document.createElement('button');aloud.setAttribute('aria-label','Read aloud');aloud.textContent='Vorlesen';actionTarget.append(aloud);}}
  },80);
- setTimeout(()=>{setResponseText(window.answerTextByTurn?.[n]||'Endfassung '+n);
+ setTimeout(()=>{setResponseText(window.answerTextByTurn?.[n]??'Endfassung '+n);
+   if(window.imageOnlyTurns?.includes(n))markdown.remove();
    if(window.documentByTurn?.[n]){
      if(window.documentCommentaryMarkdown)markdown.classList.add('markdown');
      const artifact=document.createElement('div'),header=document.createElement('header');
@@ -69,7 +82,10 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
        },window.documentDelayByTurn[n]);
      }
    }
-   if(window.makeAsset || window.assetSteps?.includes(n)){const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img');img.src=URL.createObjectURL(svg);assistant.append(img);}
+   if(window.makeAsset || window.assetSteps?.includes(n)){
+     const addImage=()=>{const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img'),inline=window.inlinePNGByTurn?.[n]||window.inlinePNG;img.src=inline||URL.createObjectURL(svg);if(inline){img.setAttribute('data-loaded','');img.alt='Individueller sonamatischer Scannerbericht';img.className='Image-LDLXtM Image-ZGWcOW LoadingImage-VJAV83';img.referrerPolicy='no-referrer';img.draggable=false;}assistant.append(img);window.imageAddedAt=Date.now();};
+     if(window.imageDelayByTurn?.[n])setTimeout(addImage,window.imageDelayByTurn[n]);else addImage();
+   }
    if(window.sandboxLink){const a=document.createElement('a');a.href='sandbox:/mnt/data/bericht.pdf';a.textContent='bericht.pdf';assistant.append(a);}
  },140);
  setTimeout(()=>{stop.remove();window.finished.push(Date.now());if(window.failResponse){const e=document.createElement('div');e.dataset.testid='error-message';e.textContent='Testfehler';document.body.append(e);}},window.finishDelay||240);
@@ -1209,6 +1225,144 @@ class BrowserTests(unittest.TestCase):
         self.assertIn('Vollständiger Individualbericht','\n'.join(result['sent'][7]['text']))
         self.assertEqual(self.page.evaluate('documentEditors.length'),4)
         self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
+
+    def test_70_required_graphic_may_arrive_after_text_generation_stops(self):
+        self.bootstrap(steps=2,assetSteps=[1],imageDelayByTurn={'1':600})
+        self.page.evaluate('flow.steps[0].requireAsset=true;run.flow=structuredClone(flow)')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertTrue(result['run']['results'][0]['assetNames'])
+        self.assertGreaterEqual(result['sent'][1]['at'],self.page.evaluate('imageAddedAt'))
+
+    def test_71_required_graphic_reports_the_actual_download_error(self):
+        self.bootstrap(steps=1,makeAsset=True)
+        self.page.evaluate('''()=>{
+          flow.steps[0].requireAsset=true;run.flow=structuredClone(flow);
+          adapter.collectAssets=async()=>({files:[],errors:['HTTP 403']});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertIn('HTTP 403',result['run'].get('error',''))
+        self.assertEqual(result['run']['results'],[])
+        self.assertIsNotNone(result['run']['pending'])
+
+    def inline_graphic(self, **flags):
+        data='data:image/png;base64,'+base64.b64encode(fixture_png(180)).decode()
+        reference='data:image/png;base64,'+base64.b64encode(fixture_png(20)).decode()
+        self.bootstrap(steps=2, semanticFree=True, streamedExchange=True, assetSteps=[1], imageOnlyTurns=[1], omitCompletionTurns=[1], userCopy=True, inlinePNG=data, referencePNG=reference, **flags)
+        self.page.evaluate('''()=>{
+          flow.steps[0].requireAsset=true;run.flow=structuredClone(flow);
+          const old=document.createElement('img');old.src=referencePNG;old.setAttribute('data-loaded','');document.querySelector('#messages').append(old);
+        }''')
+
+    def test_72_loaded_inline_png_without_text_or_response_actions(self):
+        self.inline_graphic(referenceAfterMarker=True, imageDelayByTurn={'1':600})
+        self.page.evaluate('''()=>{window.nativeFetch=window.fetch;window.fetch=()=>{throw Error('PNG must be read locally');};}''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertEqual(result['run']['results'][0]['assetNames'],['Ergebnis_1.png'])
+        captured=self.page.evaluate("async()=>btoa(String.fromCharCode(...new Uint8Array(await assets['1/Ergebnis_1.png'].arrayBuffer())))")
+        self.assertEqual(base64.b64decode(captured),fixture_png(180))
+        self.assertGreaterEqual(result['sent'][1]['at'],self.page.evaluate('imageAddedAt'))
+        self.assertIn('Ergebnis_1.png',' '.join(result['sent'][1]['names']))
+
+    def test_73_old_pending_graphic_resumes_without_a_second_prompt(self):
+        self.inline_graphic(referenceAfterMarker=True)
+        self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          runner.pause();await execution;
+          while(!finished.length)await new Promise(r=>setTimeout(r,5));
+          delete run.pending.beforeReply.images;
+          adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000});
+          runner=new ProtoScanner.Runner(adapter,async r=>saves.push(structuredClone(r)),()=>{});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertTrue(result['run']['results'][0]['assetNames'])
+
+    def test_74_reference_and_old_graphics_do_not_complete_the_step(self):
+        self.inline_graphic(referenceAfterMarker=True)
+        self.page.evaluate('assetSteps=[];adapter.replyTimeout=700')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertIsNotNone(result['run']['pending'])
+        self.assertEqual(len(result['sent']),1)
+
+    def test_75_existing_preview_is_not_a_generated_graphic(self):
+        self.inline_graphic()
+        self.page.evaluate('''()=>{
+          assetSteps=[];adapter.replyTimeout=700;
+          const preview=document.createElement('img');preview.src=inlinePNG;preview.setAttribute('data-loaded','');document.body.append(preview);
+          const send=document.querySelector('[data-testid="send-button"]'),original=send.onclick;
+          send.onclick=async()=>{await original();document.querySelector('#messages').lastElementChild.append(preview);};
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+
+    def test_76_image_diagnostic_has_no_inline_data_or_alt_text(self):
+        self.inline_graphic()
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        diagnostic=self.page.evaluate('adapter.diagnose().replyStructure')
+        self.assertTrue(any(img['inlinePNG'] and img['loadedAttribute'] for img in diagnostic['images']))
+        self.assertTrue(diagnostic['imagePaths'])
+        self.assertNotIn('base64',json.dumps(diagnostic))
+        self.assertNotIn('sonamatischer',json.dumps(diagnostic))
+
+    def test_77_eleven_steps_with_documents_and_inline_image_only_answers(self):
+        self.customer_exchange()
+        self.page.evaluate('''png=>{
+          flow=structuredClone(ProtoScanner.defaultWorkflow);
+          files=[...new Set(flow.steps.flatMap(step=>step.files))].map(name=>new File(['Quelle '+name],name));
+          run=ProtoScanner.newRun('Günter',flow,location.href);assetSteps=[5,7];imageOnlyTurns=[5,7];omitCompletionTurns=[5,7];userCopy=true;
+          inlinePNGByTurn=png;imageDelayByTurn={5:500,7:500};
+          documentByTurn={2:'Vollständiges Dojo',3:'Vollständiger Individualbericht',6:'Fachliches Dossier',8:'Persönlicher Abschlussbericht'};
+        }''', {step:'data:image/png;base64,'+base64.b64encode(fixture_png(red)).decode() for step,red in [('5',180),('7',220)]})
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),11)
+        for step in [5,7]:
+            self.assertEqual(result['run']['results'][step-1]['assetNames'],['Ergebnis_1.png'])
+            self.assertIn(f'Günter_Schritt_{step}_Ergebnis_1.png',result['sent'][7]['names'])
+        self.assertIn('Vollständiges Dojo','\n'.join(result['sent'][7]['text']))
+        self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
+
+    def test_78_supplied_graphic_keeps_image_only_reply_recognition_on_resume(self):
+        self.inline_graphic()
+        self.page.evaluate('''()=>{
+          flow.steps=flow.steps.slice(0,1);run.flow=structuredClone(flow);
+          adapter.collectAssets=async()=>({files:[],errors:['HTTP 403']});
+        }''')
+        first=self.execute()
+        self.assertEqual(first['run']['status'],'angehalten')
+        self.assertIn('HTTP 403',first['run']['error'])
+        self.page.evaluate("assets['1/manuell.png']=new File(['bereits zugeordnete Grafik'],'manuell.png',{type:'image/png'})")
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),1)
+        self.assertTrue(result['run']['results'][0]['manuallySupplied'])
+
+    def test_79_separate_inline_image_branches_are_not_guessed(self):
+        self.inline_graphic()
+        self.page.evaluate('''()=>{
+          assetSteps=[];adapter.replyTimeout=700;
+          const send=document.querySelector('[data-testid="send-button"]'),original=send.onclick;
+          send.onclick=async()=>{
+            await original();
+            for(let i=0;i<2;i++){
+              const branch=document.createElement('div'),img=document.createElement('img');img.src=inlinePNG;img.setAttribute('data-loaded','');branch.append(img);document.querySelector('#messages').append(branch);
+            }
+          };
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
 
 
 if __name__ == '__main__':

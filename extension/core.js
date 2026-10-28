@@ -94,8 +94,8 @@
       const chat=creating?run.chatUrl:conversationPath(this.adapter.url());
       const supplied=Object.entries(assets).filter(([key])=>key.startsWith(`${step.id}/`)).map(([,file])=>file);
       const captured=await this.adapter.collectAssets(result.element,signal);
-      if(step.requireAsset && !captured.files.length && !supplied.length)throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Bitte die Datei prüfen und gegebenenfalls über „Ergebnisdateien ergänzen“ zuordnen.');
       if(captured.errors.length && !supplied.length)throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
+      if(step.requireAsset && !captured.files.length && !supplied.length)throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Bitte die Datei prüfen und gegebenenfalls über „Ergebnisdateien ergänzen“ zuordnen.');
       const unique=[...new Map([...supplied,...captured.files].map(file=>[file.name,file])).values()];
       if(signal.aborted)throw new DOMException('Pausiert','AbortError');
       if(!sameConversation(chat,this.adapter.url(),!!run.pending||!!run.results.length))throw navigationFailure(chat,this.adapter.url(),'capture');
@@ -143,7 +143,7 @@
           if (run.pending) {
             if (run.pending.step!==step.id) throw Error('Der offene Schritt stimmt nicht mit dem Fortschritt überein.');
             // Never resubmit an uncertain send after interruption/reload.
-            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending,chatUrl:run.chatUrl});
+            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending,chatUrl:run.chatUrl,requireAsset:!!step.requireAsset,assetSupplied:Object.keys(assets).some(key=>key.startsWith(`${step.id}/`))});
           } else {
             const files=resolveFiles(step.files,selectedFiles);
             for (const id of step.reuse) {
@@ -162,7 +162,7 @@
             run.pending={step:step.id,marker:markerFor(run,step),preparedAt:new Date().toISOString(),beforeReply:this.adapter.snapshotConversation?.()||null};
             await this.persist(run);
             await this.adapter.send(signal);
-            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending,chatUrl:run.chatUrl});
+            result=await this.adapter.waitForReply(run.pending.marker,signal,{person:run.person,acknowledgement:acknowledgementFor(run,step),pending:run.pending,chatUrl:run.chatUrl,requireAsset:!!step.requireAsset,assetSupplied:Object.keys(assets).some(key=>key.startsWith(`${step.id}/`))});
           }
           await this.recordResult(run,step,result,assets,signal);
           await this.persist(run);

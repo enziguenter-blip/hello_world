@@ -6,6 +6,7 @@
   const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest(historySelector+', [role="dialog"], dialog, [role="search"], [inert]');
   const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
   const hasScannerMarker=el=>/proto.disput[\s\S]{0,8}[0-9a-f]{8}-[0-9a-f-]{27}/iu.test(el.textContent.normalize('NFKC').replace(/[\u00ad\u200b-\u200d\ufeff]/gu,''));
+  const fingerprint=value=>{let hash=2166136261;for(let i=0;i<value.length;i++)hash=Math.imul(hash^value.charCodeAt(i),16777619);return `${value.length}:${(hash>>>0).toString(16)}`;};
   ns.isBareAcknowledgement=text=>/^ok[.!]?$/iu.test(String(text).normalize('NFKC').trim());
   ns.matchesSourcesAcknowledgement=(text,person,count)=>{
     const value=String(text).normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
@@ -121,8 +122,10 @@
         return ancestors;
       };
       const samples=(blocks.length?blocks:words).slice(-3);
+      const images=[...document.querySelectorAll('img')].filter(visible);
       return {textBlocks:blocks.length,streamWords:words.length,
-        textPaths:samples.map(chain),actionPaths:actions.slice(-4).map(chain),nodes};
+        images:images.map(img=>({loaded:img.complete&&img.naturalWidth>0,width:img.naturalWidth,height:img.naturalHeight,inlinePNG:(img.currentSrc||img.src).startsWith('data:image/png;base64,'),loadedAttribute:img.hasAttribute('data-loaded')})),
+        imagePaths:images.slice(-3).map(chain),textPaths:samples.map(chain),actionPaths:actions.slice(-4).map(chain),nodes};
     }
     diagnose(marker=null,savedUrl=null,lastNavigationFailure=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
@@ -318,7 +321,37 @@
       for(let i=0;i<text.length;i++)hash=Math.imul(hash^text.charCodeAt(i),16777619);
       return {id,fingerprint:`${text.length}:${(hash>>>0).toString(16)}`};
     }
-    snapshotConversation(){return {assistants:this.answerCandidates().map(el=>this.messageStamp(el)),users:this.messages('user').length};}
+    snapshotConversation(){return {assistants:this.answerCandidates().map(el=>this.messageStamp(el)),users:this.messages('user').length,images:[...document.querySelectorAll('img')].map(img=>fingerprint(img.currentSrc||img.src))};}
+    imageAnswer(user,context){
+      // The observed image-only response has a loaded inline PNG but no text
+      // or ordinary response toolbar. Bind it to the exact pending prompt.
+      const excluded='form,nav,aside,header,dialog,[role="dialog"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"],#proto-disput-extension';
+      const old=context?.pending?.beforeReply?.images||[];
+      const users=this.messages('user');
+      let promptScope=users.find(el=>el===user||el.contains(user))||user;
+      if(promptScope===user){
+        // On a restored page the marker may be a single word node. The
+        // smallest prompt/copy container also excludes its source previews.
+        for(let parent=user.parentElement;parent&&!parent.matches('body,main,html,[role="main"]');parent=parent.parentElement){
+          if(this.completionActions(parent).length){promptScope=parent;break;}
+          if(parent.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]'))break;
+        }
+      }
+      const images=[...document.querySelectorAll('img[data-loaded]')].filter(img=>visible(img)&&img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128&&/^data:image\/png;base64,/i.test(img.currentSrc||img.src)&&!img.closest(excluded)&&!promptScope.contains(img)&&!users.some(el=>el.contains(img))&&!!(user.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING)&&!old.includes(fingerprint(img.currentSrc||img.src)));
+      if(!images.length)return null;
+      const roots=images.map(img=>{
+        let root=img;
+        const clean=el=>el&&!el.matches('body,main,html,[role="main"]')&&!el.contains(user)&&!hasScannerMarker(el)&&!el.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')&&!this.query('send',el).length;
+        while(clean(root.parentElement))root=root.parentElement;
+        return root;
+      });
+      const unique=[...new Set(roots)];
+      // Separate image branches could be separate responses. Never pick the
+      // last image on the page when ownership is ambiguous.
+      if(unique.length!==1)return null;
+      this.genericReplyRoots.add(unique[0]);
+      return unique[0];
+    }
     acknowledgementAnswer(context){
       if(context?.acknowledgement?.type!=='sources-readable')return null;
       const candidates=this.answerCandidates();
@@ -372,7 +405,7 @@
     async waitForReply(marker,signal,context=null){
       const chat=context?.chatUrl||ns.conversationPath(location.href);
       let previous='',stableSince=0,idleSince=Date.now();
-      this.notify('Warte auf die vollständige Antwort von ChatGPT …');
+      this.notify(context?.requireAsset?'Warte auf die fertige Grafik oder Ergebnisdatei von ChatGPT …':'Warte auf die vollständige Antwort von ChatGPT …');
       return this.until(()=>{
         if(!ns.sameConversation(chat,location.href,true))throw ns.navigationFailure(chat,location.href,'reply');
         const user=this.user(marker);
@@ -384,6 +417,10 @@
           const exact=answers.filter(el=>this.replyActionScopes.get(el)?.contains(user));
           if(answers.some(el=>this.replyActionScopes.has(el)&&!this.replyActionScopes.get(el).contains(user))||(exact.length&&answers.at(-1)!==exact.at(-1)))throw Error('Nach dem automatischen Prompt wurde eine weitere Antwort mit anderer Prompt-Zuordnung erkannt. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
           reply=answers.at(-1);
+          if(context?.requireAsset){
+            const image=this.imageAnswer(user,context);
+            if(image&&(!reply||!reply.contains(image)))reply=image;
+          }
         }
         if(!reply){reply=this.acknowledgementAnswer(context);if(reply)recognition='sources-acknowledgement';}
         if(!user && !reply && !context?.acknowledgement){
@@ -393,14 +430,16 @@
         if(!reply || this.one('stop')){stableSince=0;return false;}
         const turn=this.turn(reply);
         const busy=this.query('responseBusy',turn).some(visible);
-        const images=[...reply.querySelectorAll('img')].filter(visible);
-        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length){stableSince=0;return false;}
+        const images=[...(reply.matches('img')?[reply]:[]),...reply.querySelectorAll('img')].filter(visible);
+        const loadedPNG=context?.requireAsset&&images.some(img=>img.hasAttribute('data-loaded')&&/^data:image\/png;base64,/i.test(img.currentSrc||img.src)&&img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128);
+        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length&&!loadedPNG){stableSince=0;return false;}
+        if(context?.requireAsset&&!context.assetSupplied&&!this.assetCandidates(reply).length){stableSince=0;return false;}
         const text=this.text(reply);
         const signature=text+'\n'+images.map(img=>img.currentSrc||img.src).join('\n');
         if(!text && !images.length)return false;
         if(signature!==previous){previous=signature;stableSince=Date.now();return false;}
         return Date.now()-stableSince>=this.stableMs ? {element:reply,text:text||'[Bildantwort ohne Begleittext]',recognition} : false;
-      },this.replyTimeout,'Die Antwort wurde nicht als vollständig erkannt. Der Lauf bleibt beim offenen Schritt. Prüfe den Chat und gegebenenfalls die Abschluss-Selektoren.',signal);
+      },this.replyTimeout,context?.requireAsset?'Die Grafik oder Ergebnisdatei wurde noch nicht eindeutig als fertig erkannt. Der Lauf bleibt beim offenen Schritt; sein Prompt wird nicht erneut gesendet.':'Die Antwort wurde nicht als vollständig erkannt. Der Lauf bleibt beim offenen Schritt. Prüfe den Chat und gegebenenfalls die Abschluss-Selektoren.',signal);
     }
     answerAt(target){
       if(!(target instanceof Element) || target.closest('form, [contenteditable="true"], [contenteditable="plaintext-only"], textarea, #proto-disput-extension'))return null;
@@ -426,33 +465,46 @@
       if(!text && !element.querySelector('img'))throw Error('Die ausgewählte Antwort ist leer.');
       return {element,text:text||'[Bildantwort ohne Begleittext]'};
     }
-    async collectAssets(reply,signal){
-      const files=[],errors=[],seen=new Set();
+    assetCandidates(reply){
       const nodes=[...reply.querySelectorAll('a[href]')].filter(a=>{
         const href=a.getAttribute('href');
         return a.hasAttribute('download') || /^sandbox:/i.test(href) || /\.(pdf|docx?|xlsx?|pptx?|zip|md|txt|csv|png|jpe?g|webp|svg)(?:[?#]|$)/i.test(href) || /\/files\/|estuary\/content/.test(href);
       }).map(a=>({url:a.getAttribute('href'),name:a.getAttribute('download')||a.textContent.trim(),image:false}));
-      for(const img of reply.querySelectorAll('img')){
+      for(const img of [...(reply.matches('img')?[reply]:[]),...reply.querySelectorAll('img')]){
         if(visible(img) && img.naturalWidth>=128 && img.naturalHeight>=128)nodes.push({url:img.currentSrc||img.src,name:'',image:true});
       }
+      return nodes;
+    }
+    async collectAssets(reply,signal){
+      const files=[],errors=[],seen=new Set();
+      const nodes=this.assetCandidates(reply);
       for(const item of nodes){
         if(signal.aborted)throw new DOMException('Pausiert','AbortError');
         if(seen.has(item.url))continue;seen.add(item.url);
         try {
           const url=new URL(item.url,location.href);
           if(!['http:','https:','blob:','data:'].includes(url.protocol))throw Error('Der sichtbare Downloadlink ist kein direkt lesbarer Dateilink');
-          // Only fetch URLs displayed in this response. No private endpoint discovery,
-          // token extraction, or cross-origin credentials.
-          const controller=new AbortController();
-          const forward=()=>controller.abort();signal.addEventListener('abort',forward,{once:true});
-          const timer=setTimeout(()=>controller.abort(),60000);
-          let response,blob;
-          try {
-            response=await fetch(url.href,{credentials:url.origin===location.origin?'same-origin':'omit',signal:controller.signal,redirect:'error'});
-            if(!response.ok)throw Error(`HTTP ${response.status}`);
-            blob=await response.blob();
+          // Inline PNGs are read locally, preserving the original bytes.
+          // Other sources must be URLs displayed in this response.
+          let blob;
+          if(item.image&&/^data:image\/png;base64,/i.test(item.url)){
+            const binary=atob(item.url.slice(item.url.indexOf(',')+1));
+            const bytes=new Uint8Array(binary.length);
+            for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+            blob=new Blob([bytes],{type:'image/png'});
+          }else{
+            // No private endpoint discovery or cross-origin credentials.
+            const controller=new AbortController();
+            const forward=()=>controller.abort();signal.addEventListener('abort',forward,{once:true});
+            const timer=setTimeout(()=>controller.abort(),60000);
+            let response;
+            try {
+              response=await fetch(url.href,{credentials:url.origin===location.origin?'same-origin':'omit',signal:controller.signal,redirect:'error'});
+              if(!response.ok)throw Error(`HTTP ${response.status}`);
+              blob=await response.blob();
+            }
+            finally{clearTimeout(timer);signal.removeEventListener('abort',forward);}
           }
-          finally{clearTimeout(timer);signal.removeEventListener('abort',forward);}
           if(!blob.size || /text\/html/.test(blob.type))throw Error('Keine verwertbare Ergebnisdatei erhalten');
           if(item.image && !blob.type.startsWith('image/'))throw Error('Die sichtbare Bildquelle lieferte kein Bild');
           const ext=({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/svg+xml':'svg','application/pdf':'pdf','text/markdown':'md','text/plain':'txt','application/zip':'zip'})[blob.type.split(';')[0]]||'bin';

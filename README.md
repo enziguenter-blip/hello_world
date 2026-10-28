@@ -1,10 +1,20 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.9**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.10**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.10: Fertige Bildantworten in Schritt 5 und 7 übernehmen
+
+Das bereitgestellte Bildelement enthält eine PNG direkt in `src="data:image/png;base64,…"` und ein `data-loaded`-Attribut. Der Klassenname `LoadingImage` bleibt auch an diesem fertigen Bild erhalten und wird deshalb nicht als Ladezustand verwendet.
+
+Bei einem Grafikschritt wartet der Scanner jetzt auf die Ergebnisdatei, auch wenn der Begleittext schon fertig ist. Eine geladene, ausreichend große Inline-PNG nach dem eigenen offenen Scannerprompt kann auch ohne Antworttext und gewöhnliche Antwortknöpfe erkannt werden. Aktive Generierung, Ladezustände und die Stabilitätsprüfung bleiben berücksichtigt. Bereits vorhandene Bildquellen werden vor dem Senden durch lokale Fingerabdrücke erfasst; Nutzeranhänge, alte Bilder und mehrdeutige getrennte Bildbereiche werden bei dieser zusätzlichen Zuordnung ausgeschlossen. Die PNG wird lokal ausgelesen und bytegenau als Ergebnisdatei gespeichert, ohne erneute Bilderstellung oder Netzwerkdownload. Tatsächliche Downloadfehler werden vor der allgemeinen Meldung über eine fehlende Datei angezeigt.
+
+**Bei Schritt 5 fortsetzen:** Dateien im bisherigen Erweiterungsordner ersetzen, die bestehende Erweiterung unter `chrome://extensions` neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Schritt bleibt erhalten; sein Prompt wird nicht erneut gesendet. Nach erfolgreicher Übernahme der sichtbaren Grafik beginnt Schritt 6. Zusammengeklappte frühere Dokumente bei Bedarf öffnen, damit ihr Text im Chat geladen ist.
+
+Die Prüfung mit dem gezeigten Bildelement-Format, verzögerter Bildfertigstellung, alten offenen Schritten und allen elf Schritten erfolgt in einer simulierten Browseroberfläche. Der Praxistest im angemeldeten Chat steht noch aus. Bei uneindeutiger Zuordnung bleibt der Schritt offen; die Diagnose enthält jetzt Bildmaße, Ladezustand und Strukturpfade, ohne Bilddaten oder Bildadressen.
 
 ## Version 0.1.9: Eingebettete Dokumente im Dojo auslesen
 
