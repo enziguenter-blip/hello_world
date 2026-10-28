@@ -5,6 +5,7 @@
   const enabled=el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true';
   const editable=el=>enabled(el) && !el.readOnly && (el instanceof HTMLTextAreaElement || el.isContentEditable) && !el.closest(historySelector+', [role="dialog"], dialog, [role="search"], [inert]');
   const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
+  const hasScannerMarker=el=>/proto.disput[\s\S]{0,8}[0-9a-f]{8}-[0-9a-f-]{27}/iu.test(el.textContent.normalize('NFKC').replace(/[\u00ad\u200b-\u200d\ufeff]/gu,''));
   ns.isBareAcknowledgement=text=>/^ok[.!]?$/iu.test(String(text).normalize('NFKC').trim());
   ns.matchesSourcesAcknowledgement=(text,person,count)=>{
     const value=String(text).normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
@@ -54,7 +55,7 @@
       this.replyTimeout=options.replyTimeout??7200000;
       this.composerTimeout=options.composerTimeout??12000;
       this.userTimeout=options.userTimeout??60000;
-      this.markerNodes=new Map();this.genericReplyRoots=new WeakSet();this.genericActionRoots=new WeakMap();
+      this.markerNodes=new Map();this.genericReplyRoots=new WeakSet();this.genericActionRoots=new WeakMap();this.replyActionScopes=new WeakMap();
       this.notify=options.notify||(()=>{});
     }
     url(){return location.href;}
@@ -236,6 +237,24 @@
     completionActions(root){
       return [...new Set([...this.query('completion',root),...root.querySelectorAll(ns.defaultSelectors.completion)])].filter(el=>!el.closest('pre, code, form, [contenteditable="true"], [contenteditable="plaintext-only"], #proto-disput-extension'));
     }
+    splitStreamReply(scope,action){
+      // The observed UI groups the prompt and streamed answer together, with
+      // response controls in a sibling branch. Keep their scopes separate.
+      let controls=action;
+      while(controls.parentElement&&controls.parentElement!==scope)controls=controls.parentElement;
+      if(this.completionActions(scope).some(other=>other!==controls&&!controls.contains(other)))return null;
+      const excluded='button,[role="button"],nav,aside,header,form,dialog,[role="dialog"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"],#proto-disput-extension';
+      const blocks=[...scope.querySelectorAll('[data-d-component="text"][data-d-text-flow]')].filter(el=>visible(el)&&el.querySelector('[data-d-stream-word]')&&!el.closest(excluded)&&!hasScannerMarker(el)&&!this.messages('user').some(user=>user.contains(el)));
+      if(!blocks.length)return null;
+      let root=blocks[0];
+      for(const block of blocks)while(root&&!root.contains(block))root=root.parentElement;
+      const clean=el=>el&&el!==scope&&!el.matches('body,main,html,[role="main"]')&&!hasScannerMarker(el)&&!el.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')&&!this.completionActions(el).length;
+      if(!clean(root))return null;
+      while(clean(root.parentElement))root=root.parentElement;
+      if(!scope.contains(root))return null;
+      this.replyActionScopes.set(root,scope);
+      return root;
+    }
     genericReplies(){
       const found=[];
       // Response actions can be hidden until hover. Their message body must
@@ -243,7 +262,7 @@
       for(const action of this.completionActions(document)){
         if(action.closest('nav, aside, header, dialog, [role="dialog"]'))continue;
         const cached=this.genericActionRoots.get(action);
-        if(cached?.isConnected&&cached.contains(action)&&!cached.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')){found.push(cached);continue;}
+        if(cached?.isConnected&&cached.contains(action)&&!hasScannerMarker(cached)&&!cached.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')){found.push(cached);continue;}
         let parent=action.parentElement;
         for(let depth=0;parent&&depth<12;depth++,parent=parent.parentElement){
           if(parent.matches('body,main,[role="main"],html') || parent.querySelector('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'))break;
@@ -251,7 +270,13 @@
           if(!text)continue;
           // Ignore the user's own copied prompt and choose the smallest text
           // container associated with a response action, never the whole page.
-          if(/proto.disput[\s\S]{0,8}[0-9a-f]{8}-[0-9a-f-]{27}/iu.test(text))break;
+          if(hasScannerMarker(parent)){
+            const reply=this.splitStreamReply(parent,action);
+            // Re-evaluate split branches on each poll: streaming may add more
+            // paragraphs or another toolbar after the first discovery.
+            if(reply){found.push(reply);this.genericReplyRoots.add(reply);}
+            break;
+          }
           if(parent.querySelector('p,pre,blockquote,[data-lexical-text],.markdown') || text.length>40 || ns.isBareAcknowledgement(text)){found.push(parent);this.genericReplyRoots.add(parent);this.genericActionRoots.set(action,parent);break;}
         }
       }
@@ -309,7 +334,7 @@
       }
       return null;
     }
-    turn(el){return this.genericReplyRoots.has(el)?el:el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement;}
+    turn(el){return this.replyActionScopes.get(el)||(this.genericReplyRoots.has(el)?el:el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement);}
     text(el){
       const blocks=[...el.querySelectorAll('.markdown')];
       return (blocks.length?blocks.map(b=>b.innerText).join('\n\n'):this.bodyText(el)).trim();
@@ -325,7 +350,10 @@
         if(user){
           const following=el=>!!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING);
           if(this.messages('user').some(el=>el!==user && following(el)))throw Error('Nach dem automatischen Prompt wurde eine weitere Nachricht gesendet. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
-          reply=this.answerCandidates().filter(following).at(-1);
+          const answers=this.answerCandidates().filter(following);
+          const exact=answers.filter(el=>this.replyActionScopes.get(el)?.contains(user));
+          if(answers.some(el=>this.replyActionScopes.has(el)&&!this.replyActionScopes.get(el).contains(user))||(exact.length&&answers.at(-1)!==exact.at(-1)))throw Error('Nach dem automatischen Prompt wurde eine weitere Antwort mit anderer Prompt-Zuordnung erkannt. Bitte den Verlauf prüfen; die Erweiterung setzt nicht automatisch fort.');
+          reply=answers.at(-1);
         }
         if(!reply){reply=this.acknowledgementAnswer(context);if(reply)recognition='sources-acknowledgement';}
         if(!user && !reply && !context?.acknowledgement){

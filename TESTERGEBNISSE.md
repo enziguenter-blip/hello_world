@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.7**, 26. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.8**, 28. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -81,7 +81,18 @@ Zusätzliche Strukturdiagnose in Version 0.1.7:
 - Der neue Strukturbericht exportiert keine Gesprächs-/Eingabetexte, Dateinamen, HTML, Element-IDs, Klassen oder Attributwerte. Sie verändert weder Seiten-HTML noch den gespeicherten Lauf und sendet keine Nachricht.
 - **Die Antworterkennung wurde in 0.1.7 nicht geändert.** In der getrennten Testanordnung bleibt der Fehler reproduzierbar. Die Diagnose soll zunächst die tatsächlichen übergeordneten Container sichtbar machen; eine Reparatur oder ein erfolgreicher Live-Durchlauf wird damit nicht behauptet.
 
-Der vollständige Testlauf besteht aus **55 Tests: 54 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Gezielte Reparatur in Version 0.1.8 anhand der echten Strukturdiagnose:
+
+- Der Antwortabsatz hat 13 gestreamte Wörter und neun übergeordnete Antwortcontainer, darunter einen `display: contents`-Container. Auf Textebene 10 ist der Nutzerprompt enthalten; Textebene 11 ist der gemeinsame Vorfahr der Antwort und zweier Knöpfe in einem getrennten Werkzeugzweig. Ein neuer Test scheiterte mit 0.1.7 reproduzierbar am Antworttimeout und besteht mit der getrennten Text-/Aktionszuordnung.
+- Die tatsächliche Bestätigung „OK. Alle sechs Dateien sind vollständig lesbar. Zielperson für den folgenden Ablauf: Günter.“ startet Schritt 2 ohne manuelle Bestätigung; Ergebnistext enthält weder den Prompt noch die Knopfbeschriftungen.
+- Ein bereits gesendeter offener Schritt wird mit einer neu erstellten Adapterinstanz fortgesetzt. Der erste Prompt wird nicht erneut gesendet.
+- Weitere Antwortabsätze, Überschriften, Code und ein Bild werden vollständig erfasst und an den nächsten Schritt übergeben.
+- Mehrere unabhängige Werkzeugzweige in einem gemeinsamen Bereich werden nicht zu einer Antwort zusammengefasst.
+- Bei noch laufender Generierung oder fehlenden Abschlussknöpfen wird weiterhin nicht fortgeschaltet.
+- Alle elf konfigurierten Schritte mit gestaffelten Dateien und Bildern in Schritt 5 und 7 laufen in diesem rekonstruierten Aufbau durch. Der nächste Prompt startet jeweils erst nach dem simulierten Generierungsende.
+- Eine spätere Antwort auf einen anderen Scannerprompt oder eine manuelle Anfrage ersetzt die Antwort des offenen Schritts nicht. Der Ablauf hält stattdessen an.
+
+Der vollständige Testlauf besteht aus **62 Tests: 61 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -93,6 +104,6 @@ Der vollständige Testlauf besteht aus **55 Tests: 54 bestanden, 1 übersprungen
 
 ## Nächster Praxistest
 
-Im ursprünglichen Chat mit sichtbarer fertiger OK-Antwort und Version **0.1.7** unter **Diagnose und manuelle Reparatur → Oberfläche prüfen** den vollständigen Diagnosetext einschließlich `replyStructure` erfassen. Keine HTML-Elemente von Hand auswählen und den ersten Prompt nicht erneut senden. Diese Diagnose erfordert keine Quelldateiauswahl und startet den Ablauf nicht. Erst anhand dieser Struktur soll die weiterhin offene Antwortzuordnung gezielt repariert werden.
+Version **0.1.8** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene erste Schritt soll anhand der vorhandenen Antwort abgeschlossen werden und direkt Schritt 2 beginnen; der erste Prompt wird nicht erneut gesendet. „Oberfläche prüfen“ wird im Scanner angeklickt, nicht als Nachricht an ChatGPT gesendet.
 
-Ein vollständiger automatischer Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 sind weiterhin an der echten Oberfläche zu erproben.
+Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.

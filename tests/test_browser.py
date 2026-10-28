@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 URL = 'https://chatgpt.com/c/offline-test'
-FIXTURE = '''<!doctype html><html><head><meta charset="utf-8"><style>#prompt-textarea{min-height:40px;border:1px solid gray}</style></head><body>
+FIXTURE = r'''<!doctype html><html><head><meta charset="utf-8"><style>#prompt-textarea{min-height:40px;border:1px solid gray}</style></head><body>
 <main id="messages"></main>
 <form onsubmit="return false">
  <div id="previews"></div><input type="file" multiple hidden>
@@ -28,14 +28,33 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  const user=document.createElement('div');if(!window.semanticFree)user.dataset.messageAuthorRole='user';else user.contentEditable='false';user.textContent=record.prompt;document.querySelector('#messages').append(user);
  if(window.omitFirstUserRole && n===1)user.removeAttribute('data-message-author-role');
  if(window.omitFirstUserMarker && n===1)user.textContent=record.prompt.split('[Proto-Disput')[0];
+ let exchange,exchangeContent,actionTarget;
+ if(window.streamedExchange){
+   exchange=document.createElement('div');exchangeContent=document.createElement('div');
+   exchange.append(exchangeContent);document.querySelector('#messages').append(exchange);exchangeContent.append(user);
+   actionTarget=document.createElement('div');const tools=document.createElement('div');tools.append(actionTarget);exchange.append(tools);
+ }
  if('value' in composer)composer.value='';else composer.textContent='';previews.replaceChildren();input.value='';
  const stop=document.createElement('button');if(!window.semanticFree)stop.dataset.testid='stop-button';else stop.setAttribute('aria-label','Stop generating');stop.textContent='Stop';document.body.append(stop);
- const article=document.createElement(window.semanticFree?'section':'article');const assistant=document.createElement('div');if(!window.semanticFree)assistant.dataset.messageAuthorRole='assistant';else assistant.contentEditable='false';
+ const article=document.createElement(window.streamedExchange?'div':window.semanticFree?'section':'article');const assistant=document.createElement('div');if(!window.semanticFree)assistant.dataset.messageAuthorRole='assistant';else assistant.contentEditable='false';
  const markdown=document.createElement(window.semanticFree?(window.bareFirstBodyLayout&&n===1?'span':'p'):'div');if(!window.semanticFree)markdown.className='markdown';markdown.textContent='Zwischenstand '+n;assistant.append(markdown);article.append(assistant);document.querySelector('#messages').append(article);
+ const setResponseText=text=>{
+   if(!window.streamedExchange){markdown.textContent=text;return;}
+   markdown.className='TextBase-qM5iDq Text-nubxrT';markdown.setAttribute('data-d-text-flow','');markdown.setAttribute('data-d-component','text');
+   markdown.replaceChildren();
+   for(const word of text.match(/\S+\s*|\s+/g)||[]){const span=document.createElement('span');span.setAttribute('data-d-text-flow','word');span.setAttribute('data-d-stream-word','');span.textContent=word;markdown.append(span);}
+ };
+ if(window.streamedExchange){
+   setResponseText('Zwischenstand '+n);assistant.removeAttribute('contenteditable');
+   let branch=article;
+   for(let depth=3;depth<=9;depth++){const wrapper=document.createElement('div');wrapper.append(branch);branch=wrapper;}
+   branch.style.display='contents';exchangeContent.append(branch);
+ }
  setTimeout(()=>{
-   if(!window.omitCompletion){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';article.append(copy);}
+   if(!window.omitCompletion){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';(actionTarget||article).append(copy);
+     if(window.streamedExchange){const aloud=document.createElement('button');aloud.setAttribute('aria-label','Read aloud');aloud.textContent='Vorlesen';actionTarget.append(aloud);}}
  },80);
- setTimeout(()=>{markdown.textContent=window.answerTextByTurn?.[n]||'Endfassung '+n;
+ setTimeout(()=>{setResponseText(window.answerTextByTurn?.[n]||'Endfassung '+n);
    if(window.makeAsset || window.assetSteps?.includes(n)){const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img');img.src=URL.createObjectURL(svg);assistant.append(img);}
    if(window.sandboxLink){const a=document.createElement('a');a.href='sandbox:/mnt/data/bericht.pdf';a.textContent='bericht.pdf';assistant.append(a);}
  },140);
@@ -903,6 +922,156 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(result['run']['status'],'angehalten')
         self.assertEqual(result['run']['results'],[])
         self.assertEqual(len(result['sent']),1)
+
+    CUSTOMER_ACK = 'OK. Alle sechs Dateien sind vollständig lesbar. Zielperson für den folgenden Ablauf: Günter.'
+
+    def customer_exchange(self):
+        self.bootstrap_acknowledgement()
+        self.semantic_free_editor()
+        self.page.evaluate('''answer=>{
+          streamedExchange=true;omitFirstUserMarker=false;answerTextByTurn[1]=answer;
+        }''',self.CUSTOMER_ACK)
+
+    def test_56_customer_shared_prompt_container_advances_without_confirmation(self):
+        self.customer_exchange()
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertEqual(result['run']['results'][0]['text'],self.CUSTOMER_ACK)
+        self.assertEqual(result['run']['results'][1]['text'],'Endfassung 2')
+        self.assertFalse(result['run']['results'][0]['manuallyAdopted'])
+        self.assertGreaterEqual(result['sent'][1]['at'],result['finished'][0])
+        self.assertTrue(all('[Proto-Disput' not in item['text'] for item in result['run']['results']))
+
+    def test_57_resume_existing_customer_exchange_without_resending_step_one(self):
+        self.customer_exchange()
+        result=self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!finished.length)await new Promise(resolve=>setTimeout(resolve,5));
+          runner.pause();await execution;
+          const before=structuredClone(run),report=adapter.diagnose(run.pending.marker);
+          adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000,uploadTimeout:1500});
+          runner=new ProtoScanner.Runner(adapter,async()=>{},()=>{});
+          await runner.execute(run,files,assets);
+          return {before,report,run,sent};
+        }''')
+        self.assertEqual(result['before']['results'],[])
+        self.assertIsNotNone(result['before']['pending'])
+        structure=result['report']['replyStructure']
+        self.assertEqual(structure['streamWords'],13)
+        self.assertEqual(len(structure['actionPaths']),2)
+        self.assertFalse(structure['nodes'][structure['textPaths'][0][9]]['visible'])
+        self.assertTrue(structure['nodes'][structure['textPaths'][0][10]]['containsPrompt'])
+        shared=set(structure['textPaths'][0]) & set(structure['actionPaths'][0])
+        first_shared=next(index for index in structure['textPaths'][0] if index in shared)
+        self.assertEqual(first_shared,structure['textPaths'][0][11])
+        self.assertTrue(structure['nodes'][first_shared]['containsPrompt'])
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertEqual(result['run']['results'][0]['text'],self.CUSTOMER_ACK)
+
+    def test_58_split_response_collects_all_paragraphs_code_and_assets(self):
+        self.customer_exchange()
+        self.page.evaluate(r'''()=>{
+          flow.steps.push({id:'3',title:'Schritt 3',files:[],reuse:['2'],prompt:'Weiter für {{person}}'});
+          run.flow=structuredClone(flow);assetSteps=[2];
+          new MutationObserver(()=>{
+            for(const paragraph of document.querySelectorAll('[data-d-component="text"]')){
+              if(paragraph.dataset.extended||paragraph.textContent!=='Endfassung 2')continue;
+              paragraph.dataset.extended='true';
+              const extra=paragraph.cloneNode(true);extra.replaceChildren();
+              const span=document.createElement('span');span.setAttribute('data-d-stream-word','');span.textContent='Zweiter vollständiger Absatz';extra.append(span);
+              const code=document.createElement('pre');code.textContent='const ergebnis = "vollständig";';
+              const heading=document.createElement('h2');heading.textContent='Weitere Befunde';
+              paragraph.after(extra,heading,code);
+            }
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        second=result['run']['results'][1]
+        for text in ['Endfassung 2','Zweiter vollständiger Absatz','Weitere Befunde','const ergebnis = "vollständig";']:
+            self.assertIn(text,second['text'])
+            self.assertIn(text,'\n'.join(result['sent'][2]['text']))
+        self.assertNotIn('[Proto-Disput',second['text'])
+        self.assertNotIn('Kopieren',second['text'])
+        self.assertTrue(second['assetNames'])
+        self.assertTrue(any(name.endswith('.svg') for name in result['sent'][2]['names']))
+
+    def test_59_multiple_response_toolbars_do_not_capture_whole_history(self):
+        self.customer_exchange()
+        self.page.evaluate('''()=>{
+          adapter.replyTimeout=600;
+          new MutationObserver(()=>{
+            for(const copy of document.querySelectorAll('button[aria-label="Copy response"]')){
+              if(copy.dataset.extra)continue;copy.dataset.extra='true';
+              const exchange=copy.parentElement.parentElement.parentElement;
+              const other=document.createElement('div');const button=copy.cloneNode(true);other.append(button);exchange.append(other);
+            }
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
+
+    def test_60_streamed_shared_container_still_requires_finished_generation(self):
+        for missing_completion in [False,True]:
+            with self.subTest(missing_completion=missing_completion):
+                self.page.goto(URL)
+                for name in ['workflow.js','core.js','adapter.js']:
+                    self.page.add_script_tag(path=ROOT/'extension'/name)
+                self.customer_exchange()
+                self.page.evaluate('''missing=>{
+                  omitCompletion=missing;finishDelay=missing?240:1200;adapter.replyTimeout=500;
+                }''',missing_completion)
+                result=self.execute()
+                self.assertEqual(result['run']['status'],'angehalten')
+                self.assertEqual(result['run']['results'],[])
+                self.assertEqual(len(result['sent']),1)
+
+    def test_61_eleven_steps_with_customer_exchange_layout(self):
+        self.customer_exchange()
+        self.page.evaluate('''()=>{
+          flow=structuredClone(ProtoScanner.defaultWorkflow);
+          files=[...new Set(flow.steps.flatMap(step=>step.files))].map(name=>new File(['Quelle '+name],name));
+          run=ProtoScanner.newRun('Günter',flow,location.href);assetSteps=[5,7];
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['run']['results']),11)
+        self.assertEqual(len(result['sent']),11)
+        self.assertEqual(len(result['sent'][0]['names']),6)
+        self.assertEqual(len(result['sent'][1]['names']),2)
+        self.assertTrue(all('[Proto-Disput' not in item['text'] for item in result['run']['results']))
+        for n in range(1,11):
+            self.assertGreaterEqual(result['sent'][n]['at'],result['finished'][n-1])
+
+    def test_62_another_exchange_cannot_replace_the_open_steps_answer(self):
+        for other_marker in [True,False]:
+            with self.subTest(other_marker=other_marker):
+                self.page.goto(URL)
+                for name in ['workflow.js','core.js','adapter.js']:
+                    self.page.add_script_tag(path=ROOT/'extension'/name)
+                self.customer_exchange()
+                self.page.evaluate('''otherMarker=>{
+                  adapter.replyTimeout=800;
+                  new MutationObserver(()=>{
+                    const exchange=document.querySelector('#messages > div');
+                    if(!exchange?.querySelector('[aria-label="Copy response"]')||exchange.dataset.cloned)return;
+                    exchange.dataset.cloned='true';
+                    const other=exchange.cloneNode(true);other.dataset.cloned='true';
+                    other.firstElementChild.firstElementChild.textContent=otherMarker?'Andere Anfrage [Proto-Disput 00000000-0000-0000-0000-000000000000 / Schritt 1]':'Andere manuelle Anfrage';
+                    const span=document.createElement('span');span.setAttribute('data-d-stream-word','');span.textContent='Fremde Antwort';
+                    other.querySelector('[data-d-component="text"]').replaceChildren(span);
+                    exchange.after(other);
+                  }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+                }''',other_marker)
+                result=self.execute()
+                self.assertEqual(result['run']['status'],'angehalten')
+                self.assertIn('anderer Prompt-Zuordnung',result['run'].get('error',''))
+                self.assertEqual(result['run']['results'],[])
+                self.assertEqual(len(result['sent']),1)
 
 
 if __name__ == '__main__':

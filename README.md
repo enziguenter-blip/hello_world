@@ -1,18 +1,20 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.7**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.8**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
 
-## Version 0.1.7: Strukturdiagnose für die weiterhin offene Antworterkennung
+## Version 0.1.8: Antworttext bei gemeinsamem Prompt-/Antwortcontainer erkennen
 
-**Dies ist eine Diagnoseversion, keine bestätigte Reparatur des Wartens auf „OK“.** Die automatische Antworterkennung bleibt gegenüber 0.1.6 unverändert. Die tatsächlich gemeldete Oberfläche wird weiterhin nicht zuverlässig zugeordnet.
+Die Diagnose aus 0.1.7 zeigt einen Antwortabsatz mit `data-d-component="text"` und `data-d-stream-word`-Wörtern. Die Antwortknöpfe liegen außerhalb dieses Textbereichs. Ihr erster gemeinsamer Container enthält auch den Nutzerprompt mit der Scanner-Markierung. Die bisherige Erkennung brach an dieser Markierung ab und blieb deshalb trotz fertiger Antwort im Wartestatus.
 
-Unter **Diagnose und manuelle Reparatur → Oberfläche prüfen** enthält `replyStructure` jetzt die Elternketten der letzten `data-d-component="text"`-Absätze bzw. `data-d-stream-word`-Elemente und der erkannten Antwortknöpfe. Lokale Nummern zeigen gemeinsame Vorfahren. Grenzcontainer, enthaltene Eingabefelder, der eigene Prompt und die bisherigen Ausschlussgründe werden als Strukturmerkmale sichtbar. So muss der Nutzer die HTML-Hierarchie nicht weiter von Hand kopieren.
+Version **0.1.8** ordnet den vollständigen, vom Prompt getrennten Antwortbereich den Knöpfen dieses gemeinsamen Containers zu. Der Antworttext wird einschließlich weiterer Absätze, Code und enthaltener Ergebnisdateien erfasst. Der Nutzerprompt und seine Anhänge werden dabei nicht als Antwort übernommen. Mehrdeutige Bereiche mit mehreren getrennten Antwort-Werkzeugleisten werden nicht ungeprüft zusammengefasst. Eine nachfolgende Antwort mit anderer Prompt-Zuordnung hält den Ablauf an. Laufende Generierung, Ladezustände, Bildfertigstellung und die Stabilitätsprüfung gelten weiterhin.
 
-Diese Ergänzung liest die Seite nur. Sie sendet oder bestätigt nichts und exportiert keine Gesprächsinhalte, HTML, Klassen, Element-IDs, Beschriftungen oder Attributwerte. Sie übermittelt auch nichts automatisch. Bei sichtbarer fertiger OK-Antwort den Diagnosetext kopieren und für die Fehlersuche bereitstellen; der erste Prompt soll nicht erneut gesendet werden.
+**Ein offener Schritt 1 wird fortgesetzt, ohne den ersten Prompt erneut zu senden.** Dafür Dateien im bisherigen Erweiterungsordner ersetzen, die Erweiterung unter `chrome://extensions` neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Für den Regelablauf die OK-Antwort nicht zusätzlich bestätigen. „Oberfläche prüfen“ ist ein Knopf unter **Diagnose und manuelle Reparatur**, kein Auftrag an ChatGPT.
+
+Der aus der tatsächlichen Diagnose rekonstruierte Aufbau wurde einschließlich aller elf Schritte erfolgreich simuliert. **Ein Live-Durchlauf an deinem angemeldeten ChatGPT-Konto steht weiterhin aus.** Die Strukturdiagnose aus 0.1.7 bleibt verfügbar: `replyStructure` erfasst Elternketten und gemeinsame Vorfahren mit lokalen Knotennummern, ohne Gesprächsinhalte, HTML, Klassen, Element-IDs oder Attributwerte zu exportieren. Sie liest die Seite nur und übermittelt nichts automatisch.
 
 ## Installation unter Firefox (Testversion)
 
