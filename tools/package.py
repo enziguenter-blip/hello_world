@@ -31,8 +31,8 @@ def main():
             )
             archive.writestr('START_HIER.txt', (
                 f'PROTO-DISPUT - LOKALE TESTVERSION {manifest["version"]}\r\n\r\n'
-                'VERSION 0.1.8 - Antworttext und Abschlussknöpfe werden bei gemeinsamem Prompt-/Antwortcontainer getrennt zugeordnet.\r\n'
-                'Bei einem offenen Schritt 1 nach dem Update dieselben Quellen auswählen und Automatisch starten / fortsetzen drücken. Der erste Prompt wird nicht erneut gesendet.\r\n'
+                'VERSION 0.1.9 - Eingebettete Dojo-Dokumente werden ausgelesen und von der Chat-Eingabe unterschieden.\r\n'
+                'Bei einem offenen Dojo-Schritt nach dem Update dieselben Quellen auswählen und Automatisch starten / fortsetzen drücken. Vorhandenes Dojo wird weiterverwendet; sein Prompt wird nicht erneut gesendet.\r\n'
                 'Oberfläche prüfen ist ein Knopf unter Diagnose und manuelle Reparatur im Scanner, kein Auftrag an ChatGPT.\r\n\r\n'
                 '1. Dieses ZIP vollständig in einen eigenen Ordner entpacken.\r\n'
                 f'2. {install}\r\n'

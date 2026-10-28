@@ -132,6 +132,7 @@
         run.sourceManifest=manifest;
         run.status='läuft'; delete run.error;
         await this.persist(run);
+        this.adapter.bindRun?.(run);
         for (let i=run.results.length; i<run.flow.steps.length; i++) {
           const step=run.flow.steps[i];
           if (signal.aborted) throw new DOMException('Pausiert','AbortError');

@@ -55,7 +55,7 @@
       this.replyTimeout=options.replyTimeout??7200000;
       this.composerTimeout=options.composerTimeout??12000;
       this.userTimeout=options.userTimeout??60000;
-      this.markerNodes=new Map();this.genericReplyRoots=new WeakSet();this.genericActionRoots=new WeakMap();this.replyActionScopes=new WeakMap();
+      this.markerNodes=new Map();this.genericReplyRoots=new WeakSet();this.genericActionRoots=new WeakMap();this.replyActionScopes=new WeakMap();this.documentEditors=new WeakSet();
       this.notify=options.notify||(()=>{});
     }
     url(){return location.href;}
@@ -66,11 +66,13 @@
       if([...document.querySelectorAll('[role="dialog"][aria-modal="true"], dialog[open]')].some(visible))throw Error('Bitte zuerst den geöffneten Dialog in ChatGPT schließen.');
     }
     findComposer(){
-      if(editable(ns.selectedComposer))return ns.selectedComposer;
-      const select=selector=>[...new Set([...document.querySelectorAll(selector)].flatMap(expand))];
+      const allowed=el=>editable(el)&&!this.documentEditors.has(el);
+      if(allowed(ns.selectedComposer))return this.chatComposer=ns.selectedComposer;
+      if(allowed(this.chatComposer))return this.chatComposer;
+      const select=selector=>[...new Set([...document.querySelectorAll(selector)].flatMap(expand))].filter(allowed);
       const choose=candidates=>{
         if(candidates.length>1)throw Error('Mehrere mögliche Eingabefelder gefunden. Bitte „Chat-Eingabefeld auswählen“ anklicken und das richtige Feld markieren.');
-        return candidates[0]||null;
+        return this.chatComposer=candidates[0]||null;
       };
       if(this.selectors.composer!==ns.defaultSelectors.composer){
         const custom=select(this.selectors.composer);
@@ -79,6 +81,11 @@
       const candidates=select(ns.defaultSelectors.composer);
       const known=candidates.filter(el=>el.id==='prompt-textarea' || el.dataset.testid==='composer-text-input' || el.closest('#prompt-textarea, [data-testid="composer"], [data-testid="composer-container"], #composer-background'));
       return choose(known.length?known:candidates);
+    }
+    bindRun(run){
+      const steps=new Set([...run.results.map(result=>result.step),run.pending?.step]);
+      for(const step of run.flow.steps)if(steps.has(step.id))this.user(ns.markerFor(run,step));
+      this.answerCandidates();
     }
     replyStructure(marker=null){
       // Read-only structural evidence. Local numbers link shared ancestors;
@@ -120,7 +127,9 @@
     diagnose(marker=null,savedUrl=null,lastNavigationFailure=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
       let selected=null,problem=null;
-      const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled});
+      const describe=el=>({tag:el.tagName.toLowerCase(),id:el.id||null,testId:el.dataset.testid||null,role:el.getAttribute('role'),editable:!!el.isContentEditable,visible:visible(el),disabled:!!el.disabled,purpose:this.documentEditors.has(el)?'response-document':'input-or-other'});
+      if(marker)this.user(marker);
+      this.answerCandidates();
       try{this.assertChatPage();const el=this.findComposer();if(el)selected=describe(el);}catch(e){problem=e.message;}
       const actions=this.completionActions(document);
       return {version:ns.version,pageType,selected,problem,candidates:[...document.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].slice(0,25).map(describe),sendButtons:this.query('send').map(describe),messages:{users:this.messages('user').length,assistants:this.messages('assistant').length,recognizedReplies:this.answerCandidates().length,completionActions:actions.length,visibleCompletionActions:actions.filter(visible).length,openPromptRecognized:marker?!!this.user(marker):null,activeGeneration:!!this.one('stop'),conversationTurns:document.querySelectorAll('[data-testid^="conversation-turn-"]').length},replyStructure:this.replyStructure(marker),routing:{current:ns.routeSummary(location.href),saved:savedUrl?ns.routeSummary(savedUrl):null,sameConversation:savedUrl?ns.sameConversation(savedUrl,location.href,true):null,lastRejectedTransition:lastNavigationFailure}};
@@ -229,13 +238,16 @@
     }
     bodyText(el){
       const clone=el.cloneNode(true);
+      const editors=[...el.querySelectorAll('[contenteditable="true"],[contenteditable="plaintext-only"]')];
+      const copies=[...clone.querySelectorAll('[contenteditable="true"],[contenteditable="plaintext-only"]')];
+      editors.forEach((editor,index)=>{if(this.documentEditors.has(editor))copies[index].removeAttribute('contenteditable');});
       clone.querySelectorAll('button, [role="button"], [role="toolbar"], input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"], script, style, svg, [hidden], [aria-hidden="true"], .sr-only').forEach(node=>node.remove());
       clone.querySelectorAll('br').forEach(node=>node.replaceWith(document.createTextNode('\n')));
       clone.querySelectorAll('p,div,pre,li,tr,section,h1,h2,h3,h4,blockquote').forEach(node=>node.append(document.createTextNode('\n')));
       return (clone.textContent||'').trim();
     }
     completionActions(root){
-      return [...new Set([...this.query('completion',root),...root.querySelectorAll(ns.defaultSelectors.completion)])].filter(el=>!el.closest('pre, code, form, [contenteditable="true"], [contenteditable="plaintext-only"], #proto-disput-extension'));
+      return [...new Set([...this.query('completion',root),...root.querySelectorAll(ns.defaultSelectors.completion)])].filter(el=>!el.closest('pre, code, header, nav, aside, form, [contenteditable="true"], [contenteditable="plaintext-only"], #proto-disput-extension'));
     }
     splitStreamReply(scope,action){
       // The observed UI groups the prompt and streamed answer together, with
@@ -243,16 +255,26 @@
       let controls=action;
       while(controls.parentElement&&controls.parentElement!==scope)controls=controls.parentElement;
       if(this.completionActions(scope).some(other=>other!==controls&&!controls.contains(other)))return null;
+      // Only an exact known prompt outside an editor can establish that a
+      // second editable area belongs to its answer, rather than to the user.
+      const prompts=[...this.markerNodes.values()].filter(node=>node.isConnected&&scope.contains(node));
+      const prompt=prompts.length===1?prompts[0]:null;
+      if(scope.querySelector('input[type="file"],textarea')||this.chatComposer&&scope.contains(this.chatComposer)||this.query('send',scope).length)return null;
+      const editors=[...scope.querySelectorAll('[contenteditable="true"],[contenteditable="plaintext-only"]')];
+      if(editors.length&&(!prompt||editors.some(editor=>!visible(editor)||editor.contains(prompt)||prompt.contains(editor)||!(prompt.compareDocumentPosition(editor)&Node.DOCUMENT_POSITION_FOLLOWING)||editor.closest('form,nav,aside,dialog,[role="dialog"]'))))return null;
       const excluded='button,[role="button"],nav,aside,header,form,dialog,[role="dialog"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"],#proto-disput-extension';
-      const blocks=[...scope.querySelectorAll('[data-d-component="text"][data-d-text-flow]')].filter(el=>visible(el)&&el.querySelector('[data-d-stream-word]')&&!el.closest(excluded)&&!hasScannerMarker(el)&&!this.messages('user').some(user=>user.contains(el)));
+      const blocks=[...scope.querySelectorAll('[data-d-component="text"][data-d-text-flow]')].filter(el=>visible(el)&&el.querySelector('[data-d-stream-word]')&&!el.closest(excluded)&&!hasScannerMarker(el)&&(!prompt||!prompt.contains(el)&&!el.contains(prompt)&&!!(prompt.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING))&&!this.messages('user').some(user=>user.contains(el)));
+      blocks.push(...editors);
       if(!blocks.length)return null;
       let root=blocks[0];
       for(const block of blocks)while(root&&!root.contains(block))root=root.parentElement;
-      const clean=el=>el&&el!==scope&&!el.matches('body,main,html,[role="main"]')&&!hasScannerMarker(el)&&!el.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')&&!this.completionActions(el).length;
+      const clean=el=>el&&el!==scope&&!el.matches('body,main,html,[role="main"]')&&!hasScannerMarker(el)&&!el.querySelector('textarea')&&!this.completionActions(el).length;
       if(!clean(root))return null;
       while(clean(root.parentElement))root=root.parentElement;
       if(!scope.contains(root))return null;
+      editors.forEach(editor=>this.documentEditors.add(editor));
       this.replyActionScopes.set(root,scope);
+      for(const message of this.messages('assistant'))if(root.contains(message))this.replyActionScopes.set(message,scope);
       return root;
     }
     genericReplies(){
@@ -265,7 +287,14 @@
         if(cached?.isConnected&&cached.contains(action)&&!hasScannerMarker(cached)&&!cached.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')){found.push(cached);continue;}
         let parent=action.parentElement;
         for(let depth=0;parent&&depth<12;depth++,parent=parent.parentElement){
-          if(parent.matches('body,main,[role="main"],html') || parent.querySelector('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'))break;
+          if(parent.matches('body,main,[role="main"],html'))break;
+          if(parent.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')){
+            if(hasScannerMarker(parent)){
+              const reply=this.splitStreamReply(parent,action);
+              if(reply){found.push(reply);this.genericReplyRoots.add(reply);}
+            }
+            break;
+          }
           const text=this.bodyText(parent);
           if(!text)continue;
           // Ignore the user's own copied prompt and choose the smallest text
@@ -337,7 +366,8 @@
     turn(el){return this.replyActionScopes.get(el)||(this.genericReplyRoots.has(el)?el:el.closest('article, [data-testid^="conversation-turn-"]')||el.parentElement);}
     text(el){
       const blocks=[...el.querySelectorAll('.markdown')];
-      return (blocks.length?blocks.map(b=>b.innerText).join('\n\n'):this.bodyText(el)).trim();
+      const hasDocument=this.documentEditors.has(el)||[...el.querySelectorAll('[contenteditable="true"],[contenteditable="plaintext-only"]')].some(editor=>this.documentEditors.has(editor));
+      return (blocks.length&&!hasDocument?blocks.map(b=>b.innerText).join('\n\n'):this.bodyText(el)).trim();
     }
     async waitForReply(marker,signal,context=null){
       const chat=context?.chatUrl||ns.conversationPath(location.href);

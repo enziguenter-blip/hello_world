@@ -51,10 +51,24 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
    branch.style.display='contents';exchangeContent.append(branch);
  }
  setTimeout(()=>{
-   if(!window.omitCompletion){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';(actionTarget||article).append(copy);
+   if(!window.omitCompletion&&!window.omitCompletionTurns?.includes(n)){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';(actionTarget||article).append(copy);
      if(window.streamedExchange){const aloud=document.createElement('button');aloud.setAttribute('aria-label','Read aloud');aloud.textContent='Vorlesen';actionTarget.append(aloud);}}
  },80);
  setTimeout(()=>{setResponseText(window.answerTextByTurn?.[n]||'Endfassung '+n);
+   if(window.documentByTurn?.[n]){
+     if(window.documentCommentaryMarkdown)markdown.classList.add('markdown');
+     const artifact=document.createElement('div'),header=document.createElement('header');
+     const copy=document.createElement('button');copy.setAttribute('aria-label','Copy');copy.textContent='Dokument kopieren';header.append(copy);artifact.append(header);
+     const editor=document.createElement('div');editor.contentEditable='true';editor.setAttribute('role','textbox');editor.style.minHeight='80px';
+     const heading=document.createElement('h1');heading.textContent='Individuelles Dojo';const body=document.createElement('p');body.textContent=window.documentByTurn[n];editor.append(heading,body);artifact.append(editor);assistant.append(artifact);
+     window.documentEditors=window.documentEditors||[];window.documentEditors.push(editor);
+     editor.addEventListener('input',()=>{window.documentInputEvents=(window.documentInputEvents||0)+1;});
+     if(window.documentDelayByTurn?.[n]){
+       editor.setAttribute('aria-busy','true');setTimeout(()=>{
+         const late=document.createElement('p');late.textContent='Später fertiggestellter vollständiger Schlussteil';editor.append(late);editor.removeAttribute('aria-busy');window.documentFinished=window.documentFinished||[];window.documentFinished.push(Date.now());
+       },window.documentDelayByTurn[n]);
+     }
+   }
    if(window.makeAsset || window.assetSteps?.includes(n)){const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img');img.src=URL.createObjectURL(svg);assistant.append(img);}
    if(window.sandboxLink){const a=document.createElement('a');a.href='sandbox:/mnt/data/bericht.pdf';a.textContent='bericht.pdf';assistant.append(a);}
  },140);
@@ -1072,6 +1086,129 @@ class BrowserTests(unittest.TestCase):
                 self.assertIn('anderer Prompt-Zuordnung',result['run'].get('error',''))
                 self.assertEqual(result['run']['results'],[])
                 self.assertEqual(len(result['sent']),1)
+
+    def embedded_dojo(self):
+        self.customer_exchange()
+        self.page.evaluate('''()=>{
+          flow.steps.push({id:'3',title:'Individualbericht',files:['quelle.md'],reuse:['2'],prompt:'Bericht für {{person}}'});
+          run.flow=structuredClone(flow);documentByTurn={2:'Vollständiges Dojo mit Übungen, Beobachtungen und Transferaufgaben.'};
+        }''')
+
+    def test_63_embedded_dojo_is_read_and_step_three_uses_chat_composer(self):
+        self.embedded_dojo()
+        self.page.evaluate('documentCommentaryMarkdown=true')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),3)
+        text=result['run']['results'][1]['text']
+        self.assertIn('Individuelles Dojo',text)
+        self.assertIn('Vollständiges Dojo mit Übungen, Beobachtungen und Transferaufgaben.',text)
+        self.assertIn('Vollständiges Dojo','\n'.join(result['sent'][2]['text']))
+        self.assertNotIn('[Proto-Disput',text)
+        self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
+        self.assertIn('Vollständiges Dojo',self.page.evaluate('documentEditors[0].innerText'))
+
+    def test_64_reload_resumes_open_or_saved_dojo_with_a_replaced_chat_composer(self):
+        for pending in [True,False]:
+            with self.subTest(pending=pending):
+                self.page.goto(URL)
+                for name in ['workflow.js','core.js','adapter.js']:
+                    self.page.add_script_tag(path=ROOT/'extension'/name)
+                self.embedded_dojo()
+                result=self.page.evaluate('''async pending=>{
+                  await runner.execute(run,files,assets,{singleStep:true});
+                  if(pending){
+                    const execution=runner.execute(run,files,assets);
+                    while(finished.length<2)await new Promise(resolve=>setTimeout(resolve,5));
+                    runner.pause();await execution;
+                  }else await runner.execute(run,files,assets,{singleStep:true});
+                  const before=structuredClone(run);
+                  const replacement=fixtureComposer.cloneNode(true);fixtureComposer.replaceWith(replacement);fixtureComposer=replacement;
+                  adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000,uploadTimeout:1500});
+                  runner=new ProtoScanner.Runner(adapter,async()=>{},()=>{});
+                  await runner.execute(run,files,assets);
+                  return {before,run,sent,diagnostic:adapter.diagnose()};
+                }''',pending)
+                self.assertEqual(len(result['before']['results']),1 if pending else 2)
+                self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+                self.assertEqual(len(result['sent']),3)
+                self.assertIn('Vollständiges Dojo','\n'.join(result['sent'][2]['text']))
+                diagnostic=result['diagnostic']
+                self.assertIsNone(diagnostic['problem'])
+                self.assertEqual(diagnostic['selected']['purpose'],'input-or-other')
+                self.assertEqual(sum(item['purpose']=='response-document' for item in diagnostic['candidates']),1)
+                self.assertNotIn('Vollständiges Dojo',json.dumps(diagnostic))
+                self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
+
+    def test_65_document_stays_open_until_its_last_part_has_finished(self):
+        self.embedded_dojo()
+        self.page.evaluate('documentDelayByTurn={2:600}')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertIn('Später fertiggestellter vollständiger Schlussteil',result['run']['results'][1]['text'])
+        self.assertGreaterEqual(result['sent'][2]['at'],self.page.evaluate('documentFinished[0]'))
+
+    def test_66_streamed_user_paragraphs_are_excluded_from_the_document_result(self):
+        self.embedded_dojo()
+        self.page.evaluate('''()=>{
+          new MutationObserver(()=>{
+            for(const exchange of document.querySelectorAll('#messages > div')){
+              const user=exchange.firstElementChild?.firstElementChild;
+              if(!user||user.dataset.reformatted)continue;user.dataset.reformatted='true';
+              const text=user.textContent,split=text.lastIndexOf('[Proto-Disput');
+              const first=document.createElement('p');first.setAttribute('data-d-component','text');first.setAttribute('data-d-text-flow','');
+              const span=document.createElement('span');span.setAttribute('data-d-stream-word','');span.textContent='PRIVATE_USER_PARAGRAPH '+text.slice(0,split);first.append(span);
+              const marker=document.createElement('p');marker.textContent=text.slice(split);user.replaceChildren(first,marker);
+            }
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertTrue(all('PRIVATE_USER_PARAGRAPH' not in item['text'] for item in result['run']['results']))
+        self.assertIn('Vollständiges Dojo',result['run']['results'][1]['text'])
+
+    def test_67_document_header_copy_button_is_not_an_answer_completion(self):
+        self.embedded_dojo()
+        self.page.evaluate('omitCompletionTurns=[2];adapter.replyTimeout=600')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(len(result['run']['results']),1)
+        self.assertEqual(result['run']['pending']['step'],'2')
+        self.assertEqual(len(result['sent']),2)
+
+    def test_68_document_with_assistant_role_uses_the_external_completion_actions(self):
+        self.embedded_dojo()
+        self.page.evaluate('''()=>{
+          new MutationObserver(()=>{
+            for(const paragraph of document.querySelectorAll('[data-d-component="text"]')){
+              paragraph.parentElement.setAttribute('data-message-author-role','assistant');
+            }
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertIn('Vollständiges Dojo',result['run']['results'][1]['text'])
+        self.assertEqual(len(result['sent']),3)
+        self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
+
+    def test_69_eleven_steps_keep_multiple_document_editors_out_of_the_composer(self):
+        self.customer_exchange()
+        self.page.evaluate('''()=>{
+          flow=structuredClone(ProtoScanner.defaultWorkflow);
+          files=[...new Set(flow.steps.flatMap(step=>step.files))].map(name=>new File(['Quelle '+name],name));
+          run=ProtoScanner.newRun('Günter',flow,location.href);assetSteps=[5,7];
+          documentByTurn={2:'Vollständiges Dojo',3:'Vollständiger Individualbericht',6:'Fachliches Dossier',8:'Persönlicher Abschlussbericht'};
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['run']['results']),11)
+        self.assertEqual(len(result['sent']),11)
+        for step,text in {2:'Vollständiges Dojo',3:'Vollständiger Individualbericht',6:'Fachliches Dossier',8:'Persönlicher Abschlussbericht'}.items():
+            self.assertIn(text,result['run']['results'][step-1]['text'])
+        self.assertIn('Vollständiges Dojo','\n'.join(result['sent'][7]['text']))
+        self.assertIn('Vollständiger Individualbericht','\n'.join(result['sent'][7]['text']))
+        self.assertEqual(self.page.evaluate('documentEditors.length'),4)
+        self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
 
 
 if __name__ == '__main__':

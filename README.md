@@ -1,10 +1,22 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.8**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.9**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.9: Eingebettete Dokumente im Dojo auslesen
+
+Die nächste Diagnose aus 0.1.8 zeigt zwei sichtbare editierbare Textfelder. Eines liegt im Dojo-Antwortbereich; dort gibt es außerdem einen Kopierknopf in einer Dokument-Kopfzeile. Die bisherige Antwortsuche brach vor jedem editierbaren Bereich ab, und die Feldsuche konnte Dokument und Chat-Eingabe nicht unterscheiden.
+
+Version **0.1.9** ordnet ein eingebettetes Dokument anhand des bekannten Scannerprompts und der zugehörigen Antwortknöpfe zu. Der verfügbare Dokumenttext wird zusammen mit dem Begleittext ausgelesen und für spätere Schritte übergeben. Dazu werden nur lokale DOM-Kopien ausgewertet; der Dokumenteditor wird nicht beschrieben oder verändert. Ein Kopierknopf in einer Dokument-Kopfzeile zählt nicht als Antwortabschluss. Ladezustände und spätere Änderungen des Dokumenttexts fließen in die Abschlussprüfung ein.
+
+Die Chat-Eingabe bleibt separat: Bereits erkannte Dokumenteditoren werden aus ihrer Suche ausgeschlossen; ein zuvor eindeutig verwendetes Chat-Eingabefeld bleibt bevorzugt. Beim Fortsetzen nach einem Neuladen werden die bekannten Prompts des Laufs erneut zugeordnet. Unabhängige, nicht zuordenbare Textfelder bleiben ein Fehler. Die Diagnose kennzeichnet zugeordnete Dokumentfelder mit `purpose: response-document`, ohne deren Text zu exportieren.
+
+**Vorhandenes Dojo weiterverwenden:** Im bisherigen Erweiterungsordner aktualisieren, Erweiterung neu laden, den ursprünglichen Chat mit F5 neu laden, im Scanner dieselben Quelldateien wählen und **Automatisch starten / fortsetzen** drücken. Der offene Dojo-Schritt wird anhand der vorhandenen Antwort fortgesetzt, ohne seinen Prompt erneut zu senden. Nach erfolgreicher Erfassung soll Schritt 3 beginnen. Falls das Dojo nach F5 nur als zusammengeklappte Dokumentkarte erscheint, es vor dem Fortsetzen öffnen: Der Scanner liest den in der Seite geladenen Dokumenttext. Keine zusätzliche Bestätigung des Dojos erforderlich.
+
+Die Rekonstruktion mit eingebetteten Dokumenten, erneutem Laden und mehreren Dokumenteditoren wurde simuliert. Die Überprüfung an der tatsächlich angemeldeten ChatGPT-Oberfläche steht noch aus.
 
 ## Version 0.1.8: Antworttext bei gemeinsamem Prompt-/Antwortcontainer erkennen
 

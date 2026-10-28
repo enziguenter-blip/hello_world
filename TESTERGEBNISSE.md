@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.8**, 28. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.9**, 28. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -92,7 +92,18 @@ Gezielte Reparatur in Version 0.1.8 anhand der echten Strukturdiagnose:
 - Alle elf konfigurierten Schritte mit gestaffelten Dateien und Bildern in Schritt 5 und 7 laufen in diesem rekonstruierten Aufbau durch. Der nächste Prompt startet jeweils erst nach dem simulierten Generierungsende.
 - Eine spätere Antwort auf einen anderen Scannerprompt oder eine manuelle Anfrage ersetzt die Antwort des offenen Schritts nicht. Der Ablauf hält stattdessen an.
 
-Der vollständige Testlauf besteht aus **62 Tests: 61 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für das eingebettete Dojo-Dokument in Version 0.1.9:
+
+- Aus der tatsächlichen Diagnose wird ein zweites sichtbares editierbares Textfeld im Antwortbereich samt Dokument-Kopfzeile und eigenem Kopierknopf rekonstruiert. Der neue Test scheiterte vor der Änderung am Antworttimeout. Danach wird der vollständige Dokumentinhalt samt Begleittext für Schritt 3 übergeben, auch bei Markdown im Begleittext.
+- Die Steuerung schreibt den nächsten Prompt ausschließlich in die Chat-Eingabe. Keine Eingabeereignisse im Dokumenteditor, dessen vorhandener Inhalt bleibt erhalten.
+- Ein offener Dojo-Schritt und ein bereits gespeichertes Dojo lassen sich mit neuem Adapter und ausgetauschtem Chat-Eingabefeld fortsetzen. Kein erneutes Senden von Schritt 1 oder 2. Die Diagnose unterscheidet das Dokumentfeld von der Eingabe und exportiert keinen Dokumenttext.
+- Ein noch ladendes Dokument mit späterem Schlussteil wird erst nach dessen Fertigstellung übernommen; Schritt 3 erhält auch den Schlussteil.
+- Mehrere Absätze des Nutzerprompts mit denselben Textfluss-Merkmalen werden nicht in das Dojo-Ergebnis übernommen.
+- Ein Kopierknopf allein in der Dokument-Kopfzeile startet ohne Antwortabschluss-Knöpfe keinen Folgeschritt.
+- Auch ein Dokument innerhalb einer zusätzlich semantisch gekennzeichneten Assistentennachricht wird den außerhalb liegenden Antwortknöpfen zugeordnet.
+- Alle elf Schritte laufen mit vier eingebetteten Dokumenteditoren und Bildern durch. Frühere Dokumente werden in späteren Schritten wiederverwendet; alle Dokumenteditoren bleiben von den Eingaben der Steuerung unberührt.
+
+Der vollständige Testlauf besteht aus **69 Tests: 68 bestanden, 1 übersprungen**; mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -104,6 +115,6 @@ Der vollständige Testlauf besteht aus **62 Tests: 61 bestanden, 1 übersprungen
 
 ## Nächster Praxistest
 
-Version **0.1.8** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene erste Schritt soll anhand der vorhandenen Antwort abgeschlossen werden und direkt Schritt 2 beginnen; der erste Prompt wird nicht erneut gesendet. „Oberfläche prüfen“ wird im Scanner angeklickt, nicht als Nachricht an ChatGPT gesendet.
+Version **0.1.9** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Ein nach F5 nur als Dokumentkarte angezeigtes Dojo vor dem Fortsetzen öffnen. Der offene Dojo-Schritt soll anhand des vorhandenen Dokuments abgeschlossen werden und direkt Schritt 3 beginnen; bereits gesendete Prompts werden nicht erneut gesendet. „Oberfläche prüfen“ ist weiterhin ein Scanner-Knopf.
 
 Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.

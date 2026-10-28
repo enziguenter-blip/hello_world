@@ -100,7 +100,9 @@
   $('toggle').onclick=()=>{if(cancelPick)cancelPick();else toggle($('panel').hidden);};$('close').onclick=()=>toggle(false);
   $('diagnose').onclick=()=>{
     try{
-      const adapter=new ns.DOMAdapter(selectors),report=adapter.diagnose(run?.pending?.marker,run?.chatUrl,run?.lastNavigationFailure||null);
+      const adapter=new ns.DOMAdapter(selectors);
+      if(run)adapter.bindRun(run);
+      const report=adapter.diagnose(run?.pending?.marker,run?.chatUrl,run?.lastNavigationFailure||null);
       $('diagnostics').hidden=false;$('diagnosticText').value=JSON.stringify(report,null,2);
     }catch(e){error(e);}
   };
