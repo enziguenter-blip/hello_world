@@ -64,8 +64,8 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
    branch.style.display='contents';exchangeContent.append(branch);
  }
  setTimeout(()=>{
-   if(!window.omitCompletion&&!window.omitCompletionTurns?.includes(n)){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';(actionTarget||article).append(copy);
-     if(window.streamedExchange){const aloud=document.createElement('button');aloud.setAttribute('aria-label','Read aloud');aloud.textContent='Vorlesen';actionTarget.append(aloud);}}
+   if(!window.omitCompletion&&!window.omitCompletionTurns?.includes(n)){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabelByTurn?.[n]||window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.imageCopySVG&&window.imageOnlyTurns?.includes(n)){copy.innerHTML=imageCopySVG;copy.setAttribute('type','button');copy.dataset.state='closed';}if(window.hideResponseActions)copy.style.visibility='hidden';let target=actionTarget||article;if(window.imageCompletionInWidgetTurns?.includes(n)){target=assistant;target.dataset.testid='image-widget-fixture';}target.append(copy);
+     if(window.streamedExchange&&!window.omitReadAloudTurns?.includes(n)){const aloud=document.createElement('button');aloud.setAttribute('aria-label','Read aloud');aloud.textContent='Vorlesen';actionTarget.append(aloud);}}
  },window.completionDelayByTurn?.[n]??80);
  setTimeout(()=>{setResponseText(window.answerTextByTurn?.[n]??'Endfassung '+n);
    if(window.imageOnlyTurns?.includes(n))markdown.remove();
@@ -1529,6 +1529,79 @@ class BrowserTests(unittest.TestCase):
         with ZipFile(info.value.path()) as archive:
             self.assertEqual(archive.read('Schritt_1/korrigiert.png'),fixture_png(230))
             self.assertFalse(any('falsch.png' in name for name in archive.namelist()))
+
+    def actual_image_copy_button(self):
+        self.page.evaluate('''svg=>{copyLabelByTurn={1:'Bild kopieren'};omitReadAloudTurns=[1];imageCopySVG=svg;}''',(ROOT/'tests/fixtures/image-copy.svg').read_text())
+
+    def test_92_confirmed_image_copy_label_waits_for_correction_and_saves_final_png(self):
+        self.correcting_graphic();self.actual_image_copy_button()
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertGreaterEqual(result['sent'][1]['at']-result['sent'][0]['at'],1100)
+        captured=self.page.evaluate("async()=>btoa(String.fromCharCode(...new Uint8Array(await assets['1/Ergebnis_1.png'].arrayBuffer())))")
+        self.assertEqual(base64.b64decode(captured),fixture_png(230))
+
+    def test_93_confirmed_image_copy_button_inside_image_widget_counts_when_finished(self):
+        self.external_graphic(shared_history=True);self.actual_image_copy_button()
+        self.page.evaluate('imageCompletionInWidgetTurns=[1]')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+
+    def test_94_disabled_confirmed_image_copy_does_not_advance(self):
+        self.external_graphic();self.actual_image_copy_button()
+        self.page.evaluate('''()=>{
+          new MutationObserver(()=>{
+            const button=document.querySelector('button[aria-label="Bild kopieren"]');
+            if(!button||button.dataset.testedDisabled)return;button.dataset.testedDisabled='true';button.disabled=true;
+            setTimeout(()=>{button.disabled=false;window.imageCopyEnabledAt=Date.now();},400);
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertGreaterEqual(result['sent'][1]['at'],self.page.evaluate('imageCopyEnabledAt'))
+
+    def test_95_prompt_image_copy_button_is_not_the_response_completion(self):
+        self.external_graphic()
+        self.page.evaluate('''()=>{
+          omitCompletionTurns=[1];adapter.replyTimeout=1000;
+          new MutationObserver(()=>{
+            const prompt=[...document.querySelectorAll('#messages span')].find(el=>el.textContent.includes('[Proto-Disput'));
+            const copy=prompt?.parentElement.querySelector('button');if(copy)copy.setAttribute('aria-label','Bild kopieren');
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
+
+    def test_96_resume_finished_image_copy_with_new_adapter_does_not_resend_prompt(self):
+        self.external_graphic(shared_history=True);self.actual_image_copy_button()
+        self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));runner.pause();await execution;
+          while(!document.querySelector('button[aria-label="Bild kopieren"]'))await new Promise(r=>setTimeout(r,5));
+          adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000});
+          runner=new ProtoScanner.Runner(adapter,async r=>saves.push(structuredClone(r)),()=>{});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+
+    def test_97_old_selectors_gain_image_action_and_diagnostics_export_only_structure(self):
+        self.external_graphic(shared_history=True);self.actual_image_copy_button()
+        self.page.evaluate('''()=>{
+          const old=structuredClone(ProtoScanner.defaultSelectors);delete old.imageCompletion;
+          adapter=new ProtoScanner.DOMAdapter(old,{pollMs:10,stableMs:80,replyTimeout:2000});
+          runner=new ProtoScanner.Runner(adapter,async r=>saves.push(structuredClone(r)),()=>{});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        diagnostic=self.page.evaluate('adapter.diagnose().replyStructure')
+        self.assertEqual(diagnostic['imageCompletionActions'],1)
+        self.assertEqual(len(diagnostic['imageActionPaths']),1)
+        for private in ['base64','M13.468','generated-fixture','sonamatischer']:
+            self.assertNotIn(private,json.dumps(diagnostic))
 
 
 if __name__ == '__main__':

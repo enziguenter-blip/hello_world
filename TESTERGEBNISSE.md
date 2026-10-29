@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.12**, 29. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.13**, 29. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -133,7 +133,16 @@ Zusätzliche Prüfungen gegen den vorzeitigen Wechsel nach dem ersten Bild:
 - Im Panel lässt sich eine zu früh gespeicherte Grafik mit anderem Dateinamen ausdrücklich ersetzen. Der bereits offene Folgeschritt bleibt erhalten, es wird kein Prompt gesendet, und das ZIP enthält nur die korrigierte Datei dieses Schritts.
 - Die älteren Tests mit reinen Bildantworten erhalten jetzt zusätzlich verzögert eingeblendete Abschlussaktionen. Bildfertigstellung allein ist seit 0.1.12 kein zulässiges Abschlusssignal mehr.
 
-Die Gesamtprüfung deckt **91 Tests ab: 90 bestanden, 1 übersprungen**. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen anhand der vollständig bereitgestellten Schaltfläche:
+
+- Der tatsächliche zugängliche Name „Bild kopieren“ mit dem bereitgestellten Kopier-SVG ist der einzige Abschlussknopf der Bildantwort. Erst nach seinem Erscheinen wird fortgeschaltet; nach einer Korrektur stimmen die gespeicherten Bytes mit der zweiten Grafik überein. Dieser Test scheiterte vor der Änderung am Antworttimeout.
+- Der bestätigte Bild-Abschlussknopf liegt innerhalb eines Bildwidgets und wird dort erkannt. Ein gewöhnlicher Vorschau-Kopierknopf bleibt durch den bestehenden Test 90 ausgeschlossen. Der neue Test scheiterte ebenfalls vor der Änderung.
+- Ein deaktivierter „Bild kopieren“-Knopf hält den Folgeschritt zurück, bis er aktiviert wird. Auch dieser Test scheiterte vor der Änderung.
+- Ein gleich beschrifteter Knopf im Nutzerprompt zählt nicht als Antwortabschluss.
+- Eine bereits fertige Bildantwort mit „Bild kopieren“ wird mit neuer Adapterinstanz fortgesetzt, ohne den offenen Prompt erneut zu senden. Dieser Test scheiterte vor der Änderung.
+- Alte Selektorkonfigurationen ohne `imageCompletion` übernehmen den neuen Standard. Die Diagnose weist genau eine Bild-Abschlussaktion und deren Strukturpfad aus, ohne SVG-Pfade, Bilddaten oder Bildadressen zu exportieren.
+
+Die Gesamtprüfung deckt **97 Tests ab: 96 bestanden, 1 übersprungen**. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -145,6 +154,6 @@ Die Gesamtprüfung deckt **91 Tests ab: 90 bestanden, 1 übersprungen**. Mehrere
 
 ## Nächster Praxistest
 
-Version **0.1.12** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Einen noch offenen Bildschritt erst nach dem vollständigen Antwortabschluss automatisch übernehmen lassen. Wurde Schritt 5 bereits zu früh gespeichert, die endgültige Grafik aus ChatGPT herunterladen, unter „Ergebnisdateien ergänzen“ Schritt 5 auswählen und mit aktivierter Option „Bisherige Ergebnisdateien dieses Schritts ersetzen“ zuordnen. Danach mit denselben Quelldateien den vorhandenen Lauf fortsetzen. Gesendete Prompts werden nicht erneut gesendet; der Fortschritt wird nicht zurückgesetzt.
+Version **0.1.13** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Einen noch offenen Bildschritt nach dem Erscheinen des bestätigten „Bild kopieren“-Knopfs automatisch übernehmen lassen. Wurde Schritt 5 bereits zu früh gespeichert, die endgültige Grafik aus ChatGPT herunterladen, unter „Ergebnisdateien ergänzen“ Schritt 5 auswählen und mit aktivierter Option „Bisherige Ergebnisdateien dieses Schritts ersetzen“ zuordnen. Danach mit denselben Quelldateien den vorhandenen Lauf fortsetzen. Gesendete Prompts werden nicht erneut gesendet; der Fortschritt wird nicht zurückgesetzt.
 
 Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.

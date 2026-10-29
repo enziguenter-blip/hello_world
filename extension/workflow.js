@@ -1,7 +1,7 @@
 /* No remote scripts, API calls or account credentials. */
 (() => {
   const ns = globalThis.ProtoScanner = globalThis.ProtoScanner || {};
-  ns.version = '0.1.12';
+  ns.version = '0.1.13';
   const read = 'Lies die beigefügten Unterlagen vollständig. Wenn eine Datei nicht lesbar oder nicht vollständig verfügbar ist, benenne das ausdrücklich. Behaupte keine ungeprüfte Vollständigkeit. ';
   ns.defaultWorkflow = {
     version: 1,
@@ -56,6 +56,7 @@
     uploadBusy:'[role="progressbar"], progress, [aria-busy="true"], [data-state="uploading"]',
     responseBusy:'[role="progressbar"], progress, [aria-busy="true"], [data-state="loading"]',
     completion:'button[data-testid="copy-turn-action-button"], button[data-testid="good-response-turn-action-button"], button[data-testid="bad-response-turn-action-button"], button[aria-label="Copy"], button[aria-label="Copy response"], button[aria-label="Kopieren"], button[aria-label="Antwort kopieren"], button[aria-label="Read aloud"], button[aria-label="Vorlesen"]',
+    imageCompletion:'button[aria-label="Bild kopieren"]',
     error:'[data-testid="conversation-turn-error"], [data-testid="error-message"]'
   };
   ns.migrateSelectors = saved => {

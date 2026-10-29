@@ -1,10 +1,22 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.12**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.13**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.13: Den bestätigten Abschlussknopf „Bild kopieren“ erkennen
+
+Das nun vollständig bereitgestellte Bildelement der Schaltfläche enthält `aria-label="Bild kopieren"`. Dieser Wert war nicht in den bisherigen Text-Abschlussselektoren enthalten. Die Diagnose aus 0.1.12 zeigte entsprechend keine erkannten Abschlussaktionen im aktuellen Bildantwortbereich. Die frühere pauschale Sperre von Knöpfen innerhalb eines Bildwidgets hätte außerdem auch diesen bestätigten Bild-Abschlussknopf ausgeschlossen.
+
+Version **0.1.13** führt deshalb eine eigene Kennung für diesen Bildknopf (`imageCompletion`) ein. Sie zählt nur bei einer geladenen Bildantwort, nach deren letzter Grafik, außerhalb des Nutzerprompts und bei aktivem Knopf. Der konkret bestätigte Bildknopf darf innerhalb des Bildbereichs liegen; gewöhnliche Kopierknöpfe innerhalb einer Vorschau geben weiterhin keinen Abschluss frei. Generierungs-, Lade- und Stabilitätsprüfungen sowie die ausschließliche Übernahme der letzten korrigierten Grafik bleiben erhalten.
+
+Die Erkennung verwendet die zugängliche Beschriftung der Schaltfläche. SVG-Pfade, Symbol-Fingerabdrücke und wechselnde CSS-Klassen werden dafür nicht benutzt. Die bereitgestellte SVG ist nur als Testfixture enthalten. Alte gespeicherte Selektoren erhalten den neuen Standard automatisch. Die Strukturdiagnose zählt Bild-Abschlussaktionen separat und zeigt ihre Strukturpfade, ohne Bilddaten, SVG-Pfade oder Bildadressen auszugeben.
+
+**Offenen Schritt 5 fortsetzen:** Dateien im bisherigen Erweiterungsordner ersetzen, Erweiterung unter `chrome://extensions` neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner muss 0.1.13 stehen. Dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Prompt wird nicht erneut gesendet; die vorhandene fertige Bildantwort soll übernommen werden. Eine bereits früher falsch gespeicherte Grafik kann weiterhin wie unten beschrieben ausdrücklich ersetzt werden.
+
+Der konkrete Knopf wurde mit seinem bereitgestellten SVG, ohne zusätzliche Text-Abschlussknöpfe, sowohl unter der Bildantwort als auch innerhalb eines Bildwidgets simuliert. Auch die verspätete Korrektur, ein deaktivierter Knopf und das Fortsetzen mit neuem Adapter werden geprüft. Der Praxistest im angemeldeten Chat steht aus.
 
 ## Version 0.1.12: Nach Bildkorrekturen auf den Antwortabschluss warten
 

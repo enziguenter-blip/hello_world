@@ -97,6 +97,7 @@
       const blocks=[...document.querySelectorAll(textSelector)].filter(el=>!el.closest(excluded));
       const words=[...document.querySelectorAll('[data-d-stream-word]')].filter(el=>!el.closest(excluded));
       const actions=this.completionActions(document);
+      const imageActions=this.imageCompletionActions(document);
       const prompt=marker?this.user(marker):null;
       const nodes=[],indices=new Map();
       const describe=el=>{
@@ -113,6 +114,7 @@
           excludedActionArea:!!el.closest('nav,aside,header,dialog,[role="dialog"],pre,code,form'),
           textBlocks:el.querySelectorAll(textSelector).length,streamWords:el.querySelectorAll('[data-d-stream-word]').length,
           completionActions:actions.filter(action=>action===el||el.contains(action)).length,
+          imageCompletionActions:imageActions.filter(action=>action===el||el.contains(action)).length,
           hasBodyText:text===null?null:!!text,
           eligibleBody:text===null?null:!!text&&(!!el.querySelector('p,pre,blockquote,[data-lexical-text],.markdown')||text.length>40||ns.isBareAcknowledgement(text))});
         return number;
@@ -126,7 +128,7 @@
       const images=[...document.querySelectorAll('img')].filter(visible);
       return {textBlocks:blocks.length,streamWords:words.length,
         images:images.map(img=>({loaded:img.complete&&img.naturalWidth>0,width:img.naturalWidth,height:img.naturalHeight,sourceKind:imageSourceKind(img),afterOpenPrompt:prompt?!!(prompt.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING):null,inlinePNG:(img.currentSrc||img.src).startsWith('data:image/png;base64,'),loadedAttribute:img.hasAttribute('data-loaded')})),
-        imagePaths:images.slice(-3).map(chain),textPaths:samples.map(chain),actionPaths:actions.slice(-4).map(chain),nodes};
+        imageCompletionActions:imageActions.length,imageActionPaths:imageActions.slice(-4).map(chain),imagePaths:images.slice(-3).map(chain),textPaths:samples.map(chain),actionPaths:actions.slice(-4).map(chain),nodes};
     }
     diagnose(marker=null,savedUrl=null,lastNavigationFailure=null){
       const pageType=/^\/codex(\/|$)/.test(location.pathname)?'Codex':/^\/g\//.test(location.pathname)?'GPT/Projekt':'Chat/sonstige Seite';
@@ -253,6 +255,9 @@
     completionActions(root){
       return [...new Set([...this.query('completion',root),...root.querySelectorAll(ns.defaultSelectors.completion)])].filter(el=>!el.closest('pre, code, header, nav, aside, form, [contenteditable="true"], [contenteditable="plaintext-only"], #proto-disput-extension'));
     }
+    imageCompletionActions(root){
+      return [...new Set([...this.query('imageCompletion',root),...root.querySelectorAll(ns.defaultSelectors.imageCompletion)])].filter(el=>!el.closest('pre, code, header, nav, aside, form, [contenteditable="true"], [contenteditable="plaintext-only"], #proto-disput-extension'));
+    }
     splitStreamReply(scope,action){
       // The observed UI groups the prompt and streamed answer together, with
       // response controls in a sibling branch. Keep their scopes separate.
@@ -332,7 +337,10 @@
       for(let scope=reply;scope&&!scope.matches('body,main,html,[role="main"]');scope=scope.parentElement){
         if(scope.querySelector('input[type="file"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')||this.chatComposer&&scope.contains(this.chatComposer))break;
         if([...this.markerNodes.values(),...this.messages('user')].some(other=>other!==user&&other.isConnected&&scope.contains(other)&&!other.contains(user)&&!user.contains(other)))break;
-        const actions=this.completionActions(scope).filter(action=>enabled(action)&&!widgets.some(widget=>widget.contains(action))&&!user.contains(action)&&!!(last.compareDocumentPosition(action)&Node.DOCUMENT_POSITION_FOLLOWING));
+        // The confirmed "Bild kopieren" control is rendered in the image
+        // area itself. Ordinary widget Copy controls still do not finish it.
+        const imageActions=this.imageCompletionActions(scope);
+        const actions=[...new Set([...this.completionActions(scope),...imageActions])].filter(action=>enabled(action)&&(!widgets.some(widget=>widget.contains(action))||imageActions.includes(action))&&!user.contains(action)&&!!(last.compareDocumentPosition(action)&Node.DOCUMENT_POSITION_FOLLOWING));
         if(actions.length)return scope;
       }
       return null;
@@ -463,7 +471,7 @@
         if(context?.requireAsset&&graphicImages.length&&!imageScope){stableSince=0;return false;}
         const turn=imageScope||this.turn(reply);
         const busy=(turn.matches(this.selectors.responseBusy)&&visible(turn))||this.query('responseBusy',turn).some(visible);
-        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length){stableSince=0;return false;}
+        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || (!imageScope&&!this.completionActions(turn).length)){stableSince=0;return false;}
         if(context?.requireAsset&&!context.assetSupplied&&!this.assetCandidates(reply).length){stableSince=0;return false;}
         const text=this.text(reply);
         const signature=text+'\n'+images.map(img=>img.currentSrc||img.src).join('\n');
