@@ -31,8 +31,9 @@ def main():
             )
             archive.writestr('START_HIER.txt', (
                 f'PROTO-DISPUT - LOKALE TESTVERSION {manifest["version"]}\r\n\r\n'
-                'VERSION 0.1.11 - Geladene Bildantworten in Bildschaltflächen auch ohne Inline-PNG und data-loaded erkennen.\r\n'
+                'VERSION 0.1.12 - Auch nach dem ersten Bild auf die Abschlussknöpfe der gesamten Antwort warten; nur die endgültige Grafik übernehmen.\r\n'
                 'Bei offenem Schritt 5 nach dem Update dieselben Quellen auswählen und Automatisch starten / fortsetzen drücken. Die vorhandene Grafik wird bei eindeutiger Zuordnung übernommen; ihr Prompt wird nicht erneut gesendet.\r\n'
+                'Schritt 5 schon zu früh abgeschlossen? Endgültige Grafik aus ChatGPT herunterladen, unter Ergebnisdateien ergänzen Schritt 5 wählen, Bisherige Ergebnisdateien dieses Schritts ersetzen aktivieren und die korrigierte Datei zuordnen. Danach bestehenden Lauf fortsetzen.\r\n'
                 'Oberfläche prüfen ist ein Knopf unter Diagnose und manuelle Reparatur im Scanner, kein Auftrag an ChatGPT.\r\n\r\n'
                 '1. Dieses ZIP vollständig in einen eigenen Ordner entpacken.\r\n'
                 f'2. {install}\r\n'

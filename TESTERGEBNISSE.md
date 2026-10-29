@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.11**, 29. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.12**, 29. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -124,7 +124,16 @@ Zusätzliche Prüfungen anhand der Grafikdiagnose aus Version 0.1.10:
 - Ein direkt am Bild-Antwortbereich markierter Ladezustand verzögert den Folgeschritt bis zu seinem Ende.
 - Eine große Beispielgrafik ohne `data-loaded` hinter der Promptmarkierung wird ohne passende Bildantwort nicht als Ergebnis übernommen.
 
-Die Gesamtprüfung deckt **86 Tests ab: 85 bestanden, 1 übersprungen**. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen gegen den vorzeitigen Wechsel nach dem ersten Bild:
+
+- Zuerst wird ein Bild geladen, danach endet das Stoppsignal. Später erscheint eine korrigierte Grafik in einem weiteren Zweig derselben Antwort; erst danach werden die Abschlussknöpfe angezeigt. Der nächste Prompt wartet auf diese Knöpfe. Dieser Test scheiterte mit 0.1.11, weil der Folgeprompt vor der Korrektur gesendet wurde.
+- Die gespeicherten PNG-Bytes entsprechen exakt der zweiten, korrigierten Grafik. Nur diese eine Datei wird für spätere Schritte gespeichert. Auch dieser Test scheiterte vor der Änderung: Es war die erste Grafik gespeichert.
+- Ein geladenes Bild ohne abschließende Antwortaktionen bleibt offen. Vor der Änderung schaltete dieser Test trotz fehlender Knöpfe weiter.
+- Ein sichtbarer Kopierknopf innerhalb des Bildwidgets zählt nicht als abschließende Antwortaktion.
+- Im Panel lässt sich eine zu früh gespeicherte Grafik mit anderem Dateinamen ausdrücklich ersetzen. Der bereits offene Folgeschritt bleibt erhalten, es wird kein Prompt gesendet, und das ZIP enthält nur die korrigierte Datei dieses Schritts.
+- Die älteren Tests mit reinen Bildantworten erhalten jetzt zusätzlich verzögert eingeblendete Abschlussaktionen. Bildfertigstellung allein ist seit 0.1.12 kein zulässiges Abschlusssignal mehr.
+
+Die Gesamtprüfung deckt **91 Tests ab: 90 bestanden, 1 übersprungen**. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -136,6 +145,6 @@ Die Gesamtprüfung deckt **86 Tests ab: 85 bestanden, 1 übersprungen**. Mehrere
 
 ## Nächster Praxistest
 
-Version **0.1.11** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Schritt 5 soll anhand der vorhandenen sichtbaren Grafik abgeschlossen werden und direkt Schritt 6 beginnen; bereits gesendete Prompts werden nicht erneut gesendet. „Oberfläche prüfen“ liefert weiterhin Bild-Strukturangaben und jetzt zusätzlich Quelltypen sowie die Lage nach dem offenen Prompt.
+Version **0.1.12** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Einen noch offenen Bildschritt erst nach dem vollständigen Antwortabschluss automatisch übernehmen lassen. Wurde Schritt 5 bereits zu früh gespeichert, die endgültige Grafik aus ChatGPT herunterladen, unter „Ergebnisdateien ergänzen“ Schritt 5 auswählen und mit aktivierter Option „Bisherige Ergebnisdateien dieses Schritts ersetzen“ zuordnen. Danach mit denselben Quelldateien den vorhandenen Lauf fortsetzen. Gesendete Prompts werden nicht erneut gesendet; der Fortschritt wird nicht zurückgesetzt.
 
 Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Proto-Disput · Browserablauf",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Lokale Testversion für schrittweise Dateiübergaben in einem ChatGPT-Chat.",
   "permissions": ["storage"],
   "host_permissions": ["https://chatgpt.com/*"],

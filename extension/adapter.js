@@ -323,6 +323,20 @@
       return {id,fingerprint:`${text.length}:${(hash>>>0).toString(16)}`};
     }
     snapshotConversation(){return {assistants:this.answerCandidates().map(el=>this.messageStamp(el)),users:this.messages('user').length,images:[...document.querySelectorAll('img')].map(img=>fingerprint(img.currentSrc||img.src))};}
+    imageCompletionScope(reply,user){
+      if(!user)return null;
+      const images=[...(reply.matches('img')?[reply]:[]),...reply.querySelectorAll('img')].filter(img=>visible(img)&&img.naturalWidth>=128&&img.naturalHeight>=128);
+      const last=images.at(-1);if(!last)return null;
+      const imageButton=last.closest('button[data-testid]');
+      const widgets=[imageButton,imageButton?.parentElement?.closest('[data-testid]'),last.closest('[data-d-component]')].filter(el=>el&&!el.contains(user)&&!el.querySelector('[data-d-component="text"]')&&!this.bodyText(el));
+      for(let scope=reply;scope&&!scope.matches('body,main,html,[role="main"]');scope=scope.parentElement){
+        if(scope.querySelector('input[type="file"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')||this.chatComposer&&scope.contains(this.chatComposer))break;
+        if([...this.markerNodes.values(),...this.messages('user')].some(other=>other!==user&&other.isConnected&&scope.contains(other)&&!other.contains(user)&&!user.contains(other)))break;
+        const actions=this.completionActions(scope).filter(action=>enabled(action)&&!widgets.some(widget=>widget.contains(action))&&!user.contains(action)&&!!(last.compareDocumentPosition(action)&Node.DOCUMENT_POSITION_FOLLOWING));
+        if(actions.length)return scope;
+      }
+      return null;
+    }
     imageAnswer(user,context){
       // Image-only responses may use ordinary URLs and omit data-loaded.
       // The newly observed image is inside a button with data-testid; source
@@ -341,7 +355,12 @@
           if(parent.querySelector('input[type="file"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')||this.chatComposer&&parent.contains(this.chatComposer)||[...this.markerNodes.values()].some(other=>other!==user&&other.isConnected&&parent.contains(other)&&!other.contains(user)&&!user.contains(other)))break;
           const actions=this.completionActions(parent);
           if(actions.length>2)break;
-          if(actions.length){promptScope=parent;break;}
+          if(actions.length){
+            // Actions below a generated image belong to the answer, not to
+            // the prompt. This also applies when correction adds a branch.
+            if([...parent.querySelectorAll('img')].some(img=>!user.contains(img)&&(img.hasAttribute('data-loaded')||img.closest('button[data-testid]'))&&!!(user.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING)&&actions.some(action=>!!(img.compareDocumentPosition(action)&Node.DOCUMENT_POSITION_FOLLOWING))))break;
+            promptScope=parent;break;
+          }
         }
       }
       const images=[...document.querySelectorAll('img')].filter(img=>visible(img)&&img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128&&imageSourceKind(img)!=='other'&&(img.hasAttribute('data-loaded')||img.closest('button[data-testid]'))&&!img.closest(excluded)&&!promptScope.contains(img)&&!users.some(el=>el.contains(img))&&!!(user.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING)&&!old.includes(fingerprint(img.currentSrc||img.src)));
@@ -353,11 +372,14 @@
         return root;
       });
       const unique=[...new Set(roots)];
-      // Separate image branches could be separate responses. Never pick the
-      // last image on the page when ownership is ambiguous.
-      if(unique.length!==1)return null;
-      this.genericReplyRoots.add(unique[0]);
-      return unique[0];
+      // A correction may create another image branch in this same exchange.
+      // Only their shared final response actions can establish one answer.
+      const completed=unique.map(root=>this.imageCompletionScope(root,user));
+      if(unique.length!==1&&(!completed.every(Boolean)||new Set(completed).size!==1))return null;
+      const root=unique.at(-1),scope=completed.at(-1);
+      if(scope)this.replyActionScopes.set(root,scope);
+      this.genericReplyRoots.add(root);
+      return root;
     }
     acknowledgementAnswer(context){
       if(context?.acknowledgement?.type!=='sources-readable')return null;
@@ -412,7 +434,7 @@
     async waitForReply(marker,signal,context=null){
       const chat=context?.chatUrl||ns.conversationPath(location.href);
       let previous='',stableSince=0,idleSince=Date.now();
-      this.notify(context?.requireAsset?'Warte auf die fertige Grafik oder Ergebnisdatei von ChatGPT …':'Warte auf die vollständige Antwort von ChatGPT …');
+      this.notify(context?.requireAsset?'Warte auf den Abschluss der Bildantwort und ihre Abschlussknöpfe …':'Warte auf die vollständige Antwort von ChatGPT …');
       return this.until(()=>{
         if(!ns.sameConversation(chat,location.href,true))throw ns.navigationFailure(chat,location.href,'reply');
         const user=this.user(marker);
@@ -435,17 +457,19 @@
           else if(Date.now()-idleSince>=this.userTimeout)throw Error('Die Antwort konnte dem offenen Prompt nicht zugeordnet werden. Bitte „Oberfläche prüfen“ verwenden. Der Prompt wird nicht erneut gesendet.');
         }
         if(!reply || this.one('stop')){stableSince=0;return false;}
-        const turn=this.turn(reply);
-        const busy=(turn.matches(this.selectors.responseBusy)&&visible(turn))||this.query('responseBusy',turn).some(visible);
         const images=[...(reply.matches('img')?[reply]:[]),...reply.querySelectorAll('img')].filter(visible);
-        const loadedGraphic=context?.requireAsset&&images.some(img=>img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128&&imageSourceKind(img)!=='other');
-        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length&&!loadedGraphic){stableSince=0;return false;}
+        const graphicImages=images.filter(img=>img.naturalWidth>=128&&img.naturalHeight>=128&&imageSourceKind(img)!=='other');
+        const imageScope=context?.requireAsset&&graphicImages.length?this.imageCompletionScope(reply,user):null;
+        if(context?.requireAsset&&graphicImages.length&&!imageScope){stableSince=0;return false;}
+        const turn=imageScope||this.turn(reply);
+        const busy=(turn.matches(this.selectors.responseBusy)&&visible(turn))||this.query('responseBusy',turn).some(visible);
+        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length){stableSince=0;return false;}
         if(context?.requireAsset&&!context.assetSupplied&&!this.assetCandidates(reply).length){stableSince=0;return false;}
         const text=this.text(reply);
         const signature=text+'\n'+images.map(img=>img.currentSrc||img.src).join('\n');
         if(!text && !images.length)return false;
         if(signature!==previous){previous=signature;stableSince=Date.now();return false;}
-        return Date.now()-stableSince>=this.stableMs ? {element:reply,text:text||'[Bildantwort ohne Begleittext]',recognition} : false;
+        return Date.now()-stableSince>=this.stableMs ? {element:reply,assetElement:context?.requireAsset?graphicImages.at(-1):null,text:text||'[Bildantwort ohne Begleittext]',recognition} : false;
       },this.replyTimeout,context?.requireAsset?'Die Grafik oder Ergebnisdatei wurde noch nicht eindeutig als fertig erkannt. Der Lauf bleibt beim offenen Schritt; sein Prompt wird nicht erneut gesendet.':'Die Antwort wurde nicht als vollständig erkannt. Der Lauf bleibt beim offenen Schritt. Prüfe den Chat und gegebenenfalls die Abschluss-Selektoren.',signal);
     }
     answerAt(target){

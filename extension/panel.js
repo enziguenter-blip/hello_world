@@ -38,6 +38,7 @@
     <details><summary>Ergebnisdateien ergänzen</summary>
       <p class="muted">Falls ein sichtbarer Download nicht automatisch gelesen werden kann: über ChatGPT herunterladen und hier für den richtigen Schritt auswählen. Damit bestätigst du die Zuordnung. Nach einem Neuladen fehlen Binärdateien im Arbeitsspeicher ebenfalls.</p>
       <label for="assetStep">Schritt</label><select id="assetStep"></select>
+      <label><input id="replaceAssets" type="checkbox" style="width:auto"> Bisherige Ergebnisdateien dieses Schritts ersetzen</label>
       <input id="assets" type="file" multiple><div id="resultFiles"></div>
     </details>
     <details><summary>Dateizuordnung und Prompts bearbeiten</summary>
@@ -66,7 +67,7 @@
   const config=()=>ns.validateWorkflow(JSON.parse($('workflow').value));
   function paint(){
     const busy=!!runner?.running || picking;
-    for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','pickComposer'])$(id).disabled=busy;
+    for(const id of ['person','sources','folder','check','start','next','new','workflow','saveConfig','importConfig','saveSelectors','selectors','assets','replaceAssets','pickComposer'])$(id).disabled=busy;
     $('diagnose').disabled=picking;
     $('adoptAnswer').disabled=busy || !run?.pending;
     $('pickAnswerPage').disabled=busy || !run?.pending;
@@ -214,11 +215,13 @@
     const id=$('assetStep').value;if(!run||!id)throw Error('Es gibt keinen Schritt für die Zuordnung.');
     const added=[...event.target.files];
     if(!added.length)return;
-    if(!confirm(`${added.length} Datei(en) verbindlich Schritt ${id} zuordnen? Bei einem blockierten Download ersetzt dies die automatische Übernahme.`))return;
+    const replace=$('replaceAssets').checked;
+    if(!confirm(`${added.length} Datei(en) verbindlich Schritt ${id} zuordnen? ${replace?'Die bisherigen Ergebnisdateien dieses Schritts werden durch diese Auswahl ersetzt.':'Bei einem blockierten Download ersetzt dies die automatische Übernahme.'}`))return;
     const result=run.results.find(r=>r.step===id);
+    if(replace){for(const key of Object.keys(assets))if(key.startsWith(`${id}/`))delete assets[key];if(result)result.assetNames=[];}
     for(const file of added){assets[`${id}/${file.name}`]=file;if(result)result.assetNames=[...new Set([...(result.assetNames||[]),file.name])];}
     if(result)result.manuallySupplied=true;
-    await storage.set({latestRun:run});paint();
+    await storage.set({latestRun:run});$('replaceAssets').checked=false;paint();
   });
   $('saveConfig').onclick=guard(async()=>{await storage.set({workflow:config()});$('status').textContent='Ablaufkonfiguration lokal gespeichert. Sie gilt für neue Läufe.';paint();});
   $('exportConfig').onclick=guard(async()=>download(new Blob([JSON.stringify(config(),null,2)],{type:'application/json'}),'proto-disput-ablauf.json'));

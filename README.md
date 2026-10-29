@@ -1,10 +1,24 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.11**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.12**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.12: Nach Bildkorrekturen auf den Antwortabschluss warten
+
+Die Freigabe aus 0.1.10/0.1.11 allein aufgrund eines geladenen Bildes war falsch: ChatGPT konnte das erste Bild anschließend noch korrigieren, während der Scanner bereits den nächsten Prompt schickte. Ein geladenes Bild, ein Vergrößerungsknopf oder ein Kopierknopf innerhalb der Bildvorschau gilt deshalb jetzt ausdrücklich nicht als Antwortabschluss.
+
+Version **0.1.12** wartet auch bei Grafikschritten auf einen sichtbaren, aktiven Abschlussknopf nach der Bildantwort. Der Knopf muss zum Antwortbereich dieses Scannerprompts gehören; Prompt-Kopierknöpfe und Bedienelemente innerhalb eines Bildwidgets werden ausgeschlossen. Die neue Diagnose zeigt einen bereits vom Adapter erkannten Abschlussknopf außerhalb der Bildzweige; das ergänzend bereitgestellte SVG zeigt ein Kopiersymbol. Es wird kein SVG-Pfad als Selektor verwendet. Generierungs-, Lade- und Stabilitätsprüfungen bleiben zusätzlich erforderlich. Eine feste zusätzliche Wartezeit ersetzt diese Abschlussbedingung nicht.
+
+Erstellt ChatGPT innerhalb derselben Antwort zunächst ein Bild und danach eine Korrektur in einem weiteren Zweig, werden diese nur mit einem gemeinsamen zugeordneten Antwortabschluss zusammengeführt. Für die beiden Grafikschritte wird die letzte Grafik der abgeschlossenen Antwort als Ergebnisdatei übernommen. Die erste fehlerhafte Grafik wird nicht zusätzlich an spätere Schritte angehängt. Fehlen zuordenbare Abschlussaktionen, bleibt der Schritt offen.
+
+**Update:** Dateien im bisherigen Erweiterungsordner ersetzen, Erweiterung unter `chrome://extensions` neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner muss 0.1.12 stehen. Dieselben Quelldateien wählen und den vorhandenen Lauf fortsetzen; offene Prompts werden nicht erneut gesendet.
+
+**Bereits zu früh übernommene Grafik von Schritt 5 korrigieren:** Die endgültige korrigierte Grafik aus ChatGPT herunterladen. Im Scanner „Ergebnisdateien ergänzen“ öffnen, Schritt 5 wählen und „Bisherige Ergebnisdateien dieses Schritts ersetzen“ aktivieren. Die korrigierte Datei auswählen und die Zuordnung bestätigen. Das ersetzt auch eine frühere Datei mit anderem Namen und erhält den übrigen Fortschritt sowie einen eventuell bereits gesendeten Schritt 6. Danach den vorhandenen Lauf fortsetzen. Diese einmalige Reparatur gehört nicht zum normalen automatischen Ablauf.
+
+Die Korrektur wurde mit verzögerten Abschlussaktionen, einem zweiten Bild, nur einer endgültig gespeicherten Grafik sowie dem Ersatz einer bereits gespeicherten Datei simuliert. Die Bestätigung im angemeldeten Chat steht weiterhin aus.
 
 ## Version 0.1.11: Bildantwort mit normaler Bildadresse und ohne `data-loaded`
 

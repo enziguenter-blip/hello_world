@@ -66,7 +66,7 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  setTimeout(()=>{
    if(!window.omitCompletion&&!window.omitCompletionTurns?.includes(n)){const copy=document.createElement('button');if(!window.semanticFree)copy.dataset.testid='copy-turn-action-button';else copy.setAttribute('aria-label',window.copyLabel||'Copy response');copy.textContent='Kopieren';if(window.hideResponseActions)copy.style.visibility='hidden';(actionTarget||article).append(copy);
      if(window.streamedExchange){const aloud=document.createElement('button');aloud.setAttribute('aria-label','Read aloud');aloud.textContent='Vorlesen';actionTarget.append(aloud);}}
- },80);
+ },window.completionDelayByTurn?.[n]??80);
  setTimeout(()=>{setResponseText(window.answerTextByTurn?.[n]??'Endfassung '+n);
    if(window.imageOnlyTurns?.includes(n))markdown.remove();
    if(window.documentByTurn?.[n]){
@@ -1250,7 +1250,7 @@ class BrowserTests(unittest.TestCase):
     def inline_graphic(self, **flags):
         data='data:image/png;base64,'+base64.b64encode(fixture_png(180)).decode()
         reference='data:image/png;base64,'+base64.b64encode(fixture_png(20)).decode()
-        self.bootstrap(steps=2, semanticFree=True, streamedExchange=True, assetSteps=[1], imageOnlyTurns=[1], omitCompletionTurns=[1], userCopy=True, inlinePNG=data, referencePNG=reference, **flags)
+        self.bootstrap(steps=2, semanticFree=True, streamedExchange=True, assetSteps=[1], imageOnlyTurns=[1], completionDelayByTurn={'1':800}, userCopy=True, inlinePNG=data, referencePNG=reference, **flags)
         self.page.evaluate('''()=>{
           flow.steps[0].requireAsset=true;run.flow=structuredClone(flow);
           const old=document.createElement('img');old.src=referencePNG;old.setAttribute('data-loaded','');document.querySelector('#messages').append(old);
@@ -1320,7 +1320,7 @@ class BrowserTests(unittest.TestCase):
         self.page.evaluate('''png=>{
           flow=structuredClone(ProtoScanner.defaultWorkflow);
           files=[...new Set(flow.steps.flatMap(step=>step.files))].map(name=>new File(['Quelle '+name],name));
-          run=ProtoScanner.newRun('Günter',flow,location.href);assetSteps=[5,7];imageOnlyTurns=[5,7];omitCompletionTurns=[5,7];userCopy=true;
+          run=ProtoScanner.newRun('Günter',flow,location.href);assetSteps=[5,7];imageOnlyTurns=[5,7];completionDelayByTurn={5:800,7:800};userCopy=true;
           inlinePNGByTurn=png;imageDelayByTurn={5:500,7:500};
           documentByTurn={2:'Vollständiges Dojo',3:'Vollständiger Individualbericht',6:'Fachliches Dossier',8:'Persönlicher Abschlussbericht'};
         }''', {step:'data:image/png;base64,'+base64.b64encode(fixture_png(red)).decode() for step,red in [('5',180),('7',220)]})
@@ -1450,6 +1450,85 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(result['run']['status'],'angehalten')
         self.assertEqual(result['run']['results'],[])
         self.assertEqual(len(result['sent']),1)
+
+    def correcting_graphic(self):
+        self.external_graphic(shared_history=True)
+        self.page.evaluate('''png=>{
+          completionDelayByTurn={1:1100};
+          const send=document.querySelector('[data-testid="send-button"]'),original=send.onclick;
+          send.onclick=async()=>{
+            await original();if(sent.length!==1)return;
+            setTimeout(()=>{
+              const exchange=document.querySelector('#messages').lastElementChild;
+              const corrected=document.createElement('div'),image=document.createElement('img');image.src=png;image.setAttribute('data-loaded','');
+              const note=document.createElement('p');note.textContent='Korrigierte endgültige Grafik';corrected.append(note,image);exchange.firstElementChild.append(corrected);
+              window.correctedAddedAt=Date.now();
+            },650);
+          };
+        }''','data:image/png;base64,'+base64.b64encode(fixture_png(230)).decode())
+
+    def test_87_first_loaded_image_does_not_advance_before_completion_actions(self):
+        self.correcting_graphic()
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertGreaterEqual(result['sent'][1]['at'],self.page.evaluate('correctedAddedAt'))
+        self.assertGreaterEqual(result['sent'][1]['at']-result['sent'][0]['at'],1100)
+
+    def test_88_only_the_corrected_final_graphic_is_saved(self):
+        self.correcting_graphic()
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(result['run']['results'][0]['assetNames'],['Ergebnis_1.png'])
+        captured=self.page.evaluate("async()=>btoa(String.fromCharCode(...new Uint8Array(await assets['1/Ergebnis_1.png'].arrayBuffer())))")
+        self.assertEqual(base64.b64decode(captured),fixture_png(230))
+
+    def test_89_loaded_image_without_final_response_controls_stays_pending(self):
+        self.external_graphic()
+        self.page.evaluate('omitCompletionTurns=[1];adapter.replyTimeout=1000')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(len(result['sent']),1)
+        self.assertEqual(result['run']['results'],[])
+        self.assertIsNotNone(result['run']['pending'])
+
+    def test_90_image_widget_copy_is_not_the_final_response_toolbar(self):
+        self.correcting_graphic()
+        self.page.evaluate('''()=>{
+          new MutationObserver(()=>{
+            const image=[...document.querySelectorAll('#messages img')].find(img=>img.src===regularImageURL);
+            if(!image||image.dataset.addedControls)return;image.dataset.addedControls='true';
+            const widget=image.parentElement.parentElement;widget.dataset.testid='image-widget-fixture';
+            const copy=document.createElement('button');copy.setAttribute('aria-label','Copy');copy.textContent='Bild kopieren';widget.append(copy);
+          }).observe(document.querySelector('#messages'),{childList:true,subtree:true});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertGreaterEqual(result['sent'][1]['at']-result['sent'][0]['at'],1100)
+
+    def test_91_replace_wrong_saved_graphic_preserves_progress_and_exports_only_final_file(self):
+        self.bootstrap(steps=2)
+        self.page.evaluate('''()=>{
+          run.results=[{step:'1',title:'Grafik',text:'Bildantwort',assetNames:['falsch.png']}];
+          run.pending={step:'2',marker:ProtoScanner.markerFor(run,run.flow.steps[1])};run.status='pausiert';
+          window.browser={storage:{local:{get:async()=>({latestRun:structuredClone(run)}),set:async value=>{window.savedByPanel=value;}}}};
+        }''')
+        self.page.add_script_tag(path=ROOT/'extension'/'panel.js')
+        self.page.get_by_role('button',name='Scanner-Ablauf',exact=True).click()
+        self.page.get_by_text('Ergebnisdateien ergänzen',exact=True).click()
+        self.page.locator('#assetStep').select_option('1')
+        self.page.locator('#replaceAssets').check()
+        self.page.once('dialog',lambda dialog:dialog.accept())
+        self.page.locator('#assets').set_input_files({'name':'korrigiert.png','mimeType':'image/png','buffer':fixture_png(230)})
+        self.page.wait_for_function('window.savedByPanel?.latestRun?.results[0]?.manuallySupplied')
+        saved=self.page.evaluate('savedByPanel.latestRun')
+        self.assertEqual(saved['results'][0]['assetNames'],['korrigiert.png'])
+        self.assertEqual(saved['pending']['step'],'2')
+        self.assertEqual(self.page.evaluate('sent.length'),0)
+        with self.page.expect_download() as info:
+            self.page.get_by_role('button',name='Ergebnisse als ZIP',exact=True).click()
+        with ZipFile(info.value.path()) as archive:
+            self.assertEqual(archive.read('Schritt_1/korrigiert.png'),fixture_png(230))
+            self.assertFalse(any('falsch.png' in name for name in archive.namelist()))
 
 
 if __name__ == '__main__':

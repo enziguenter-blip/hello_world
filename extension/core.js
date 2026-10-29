@@ -93,7 +93,7 @@
       const creating=run.pending&&!run.results.length&&conversationLocation(run.chatUrl).kind==='new-chat';
       const chat=creating?run.chatUrl:conversationPath(this.adapter.url());
       const supplied=Object.entries(assets).filter(([key])=>key.startsWith(`${step.id}/`)).map(([,file])=>file);
-      const captured=await this.adapter.collectAssets(result.element,signal);
+      const captured=await this.adapter.collectAssets(result.assetElement||result.element,signal);
       if(captured.errors.length && !supplied.length)throw Error('Ergebnisdatei nicht automatisch zugänglich: '+captured.errors.join('; ')+'. Die Datei kann manuell ergänzt werden.');
       if(step.requireAsset && !captured.files.length && !supplied.length)throw Error('Dieser Schritt erwartet eine Grafik oder Ergebnisdatei. Bitte die Datei prüfen und gegebenenfalls über „Ergebnisdateien ergänzen“ zuordnen.');
       const unique=[...new Map([...supplied,...captured.files].map(file=>[file.name,file])).values()];
