@@ -1,10 +1,20 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.10**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.11**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
 **Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.11: Bildantwort mit normaler Bildadresse und ohne `data-loaded`
+
+Die neue Diagnose aus 0.1.10 zeigt eine geladene Grafik mit 1536 × 1024 Pixeln in einer Bildschaltfläche, ohne Inline-PNG-Quelle und ohne `data-loaded`. Die große Inline-PNG im Promptbereich trägt dieses Attribut ebenfalls nicht. Die bisherige zusätzliche Bildsuche ließ deshalb die fertige Grafik aus. Zugleich konnte ihre Suche nach einem Prompt-Kopierknopf bis in den gemeinsamen Verlauf mit älteren Dokumenteditoren reichen und die Bildantwort als Teil des Prompts ausschließen.
+
+Version **0.1.11** berücksichtigt neben den zuvor unterstützten Bildern mit `data-loaded` auch geladene Bilder in einer Schaltfläche mit Testkennung. Die zusätzliche Zuordnung hängt dabei nicht mehr vom Bildformat oder einer Inline-PNG-Adresse ab. Sie prüft weiterhin den eigenen offenen Prompt, die Trennung vom Nutzerbereich und bereits vor dem Senden vorhandene Bildquellen. Die Suche nach dem Promptbereich endet vor anderen bekannten Prompts, Dokumenteditoren und der Chat-Eingabe. Aktive Generierung, Bilddekodierung, Ladezustände und Stabilität müssen abgeschlossen sein. Ein Ladezustand direkt am Antwortbereich wird ebenfalls berücksichtigt.
+
+Die ursprünglichen PNG-Bytes werden aus Inline-Daten lokal oder über die im Bild sichtbare HTTP-/Blob-Adresse ausgelesen. Ein nicht zugänglicher Download führt zu einer konkreten Fehlermeldung. Es werden keine zusätzlichen Downloadadressen, Anmeldedaten oder privaten Endpunkte ermittelt. Die Diagnose nennt jetzt den Quelltyp und die Lage nach dem offenen Prompt, ohne Bildadressen oder Bilddaten auszugeben.
+
+**Vorhandene Grafik in Schritt 5 weiterverwenden:** Dateien im bisherigen Erweiterungsordner ersetzen, die bestehende Erweiterung unter `chrome://extensions` neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Schritt und sein bereits gesendeter Prompt bleiben erhalten. Nach erfolgreicher Grafikübernahme beginnt Schritt 6. Die neue Struktur wurde anhand der Diagnose simuliert; die Bestätigung im angemeldeten Chat steht aus.
 
 ## Version 0.1.10: Fertige Bildantworten in Schritt 5 und 7 übernehmen
 

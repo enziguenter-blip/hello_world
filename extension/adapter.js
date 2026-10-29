@@ -7,6 +7,7 @@
   const expand=el=>[el,...el.querySelectorAll('textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')].filter(editable);
   const hasScannerMarker=el=>/proto.disput[\s\S]{0,8}[0-9a-f]{8}-[0-9a-f-]{27}/iu.test(el.textContent.normalize('NFKC').replace(/[\u00ad\u200b-\u200d\ufeff]/gu,''));
   const fingerprint=value=>{let hash=2166136261;for(let i=0;i<value.length;i++)hash=Math.imul(hash^value.charCodeAt(i),16777619);return `${value.length}:${(hash>>>0).toString(16)}`;};
+  const imageSourceKind=img=>{try{const protocol=new URL(img.currentSrc||img.src,location.href).protocol;return ['http:','https:','blob:','data:'].includes(protocol)?protocol.slice(0,-1):'other';}catch{return 'other';}};
   ns.isBareAcknowledgement=text=>/^ok[.!]?$/iu.test(String(text).normalize('NFKC').trim());
   ns.matchesSourcesAcknowledgement=(text,person,count)=>{
     const value=String(text).normalize('NFKC').toLocaleLowerCase('de').replace(/\s+/gu,' ').trim();
@@ -124,7 +125,7 @@
       const samples=(blocks.length?blocks:words).slice(-3);
       const images=[...document.querySelectorAll('img')].filter(visible);
       return {textBlocks:blocks.length,streamWords:words.length,
-        images:images.map(img=>({loaded:img.complete&&img.naturalWidth>0,width:img.naturalWidth,height:img.naturalHeight,inlinePNG:(img.currentSrc||img.src).startsWith('data:image/png;base64,'),loadedAttribute:img.hasAttribute('data-loaded')})),
+        images:images.map(img=>({loaded:img.complete&&img.naturalWidth>0,width:img.naturalWidth,height:img.naturalHeight,sourceKind:imageSourceKind(img),afterOpenPrompt:prompt?!!(prompt.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING):null,inlinePNG:(img.currentSrc||img.src).startsWith('data:image/png;base64,'),loadedAttribute:img.hasAttribute('data-loaded')})),
         imagePaths:images.slice(-3).map(chain),textPaths:samples.map(chain),actionPaths:actions.slice(-4).map(chain),nodes};
     }
     diagnose(marker=null,savedUrl=null,lastNavigationFailure=null){
@@ -323,21 +324,27 @@
     }
     snapshotConversation(){return {assistants:this.answerCandidates().map(el=>this.messageStamp(el)),users:this.messages('user').length,images:[...document.querySelectorAll('img')].map(img=>fingerprint(img.currentSrc||img.src))};}
     imageAnswer(user,context){
-      // The observed image-only response has a loaded inline PNG but no text
-      // or ordinary response toolbar. Bind it to the exact pending prompt.
+      // Image-only responses may use ordinary URLs and omit data-loaded.
+      // The newly observed image is inside a button with data-testid; source
+      // previews have neither cue. Still require exact prompt ownership.
       const excluded='form,nav,aside,header,dialog,[role="dialog"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"],#proto-disput-extension';
       const old=context?.pending?.beforeReply?.images||[];
       const users=this.messages('user');
-      let promptScope=users.find(el=>el===user||el.contains(user))||user;
-      if(promptScope===user){
+      const knownUser=users.find(el=>el===user||el.contains(user));
+      let promptScope=knownUser||user;
+      if(!knownUser){
         // On a restored page the marker may be a single word node. The
         // smallest prompt/copy container also excludes its source previews.
         for(let parent=user.parentElement;parent&&!parent.matches('body,main,html,[role="main"]');parent=parent.parentElement){
-          if(this.completionActions(parent).length){promptScope=parent;break;}
-          if(parent.querySelector('textarea,[contenteditable="true"],[contenteditable="plaintext-only"]'))break;
+          // The reported image shares an ancestor with its prompt but has
+          // no copy toolbar there. Do not walk into older document/toolbars.
+          if(parent.querySelector('input[type="file"],textarea,[contenteditable="true"],[contenteditable="plaintext-only"]')||this.chatComposer&&parent.contains(this.chatComposer)||[...this.markerNodes.values()].some(other=>other!==user&&other.isConnected&&parent.contains(other)&&!other.contains(user)&&!user.contains(other)))break;
+          const actions=this.completionActions(parent);
+          if(actions.length>2)break;
+          if(actions.length){promptScope=parent;break;}
         }
       }
-      const images=[...document.querySelectorAll('img[data-loaded]')].filter(img=>visible(img)&&img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128&&/^data:image\/png;base64,/i.test(img.currentSrc||img.src)&&!img.closest(excluded)&&!promptScope.contains(img)&&!users.some(el=>el.contains(img))&&!!(user.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING)&&!old.includes(fingerprint(img.currentSrc||img.src)));
+      const images=[...document.querySelectorAll('img')].filter(img=>visible(img)&&img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128&&imageSourceKind(img)!=='other'&&(img.hasAttribute('data-loaded')||img.closest('button[data-testid]'))&&!img.closest(excluded)&&!promptScope.contains(img)&&!users.some(el=>el.contains(img))&&!!(user.compareDocumentPosition(img)&Node.DOCUMENT_POSITION_FOLLOWING)&&!old.includes(fingerprint(img.currentSrc||img.src)));
       if(!images.length)return null;
       const roots=images.map(img=>{
         let root=img;
@@ -429,10 +436,10 @@
         }
         if(!reply || this.one('stop')){stableSince=0;return false;}
         const turn=this.turn(reply);
-        const busy=this.query('responseBusy',turn).some(visible);
+        const busy=(turn.matches(this.selectors.responseBusy)&&visible(turn))||this.query('responseBusy',turn).some(visible);
         const images=[...(reply.matches('img')?[reply]:[]),...reply.querySelectorAll('img')].filter(visible);
-        const loadedPNG=context?.requireAsset&&images.some(img=>img.hasAttribute('data-loaded')&&/^data:image\/png;base64,/i.test(img.currentSrc||img.src)&&img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128);
-        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length&&!loadedPNG){stableSince=0;return false;}
+        const loadedGraphic=context?.requireAsset&&images.some(img=>img.complete&&img.naturalWidth>=128&&img.naturalHeight>=128&&imageSourceKind(img)!=='other');
+        if(busy || images.some(img=>!img.complete || !img.naturalWidth) || !this.completionActions(turn).length&&!loadedGraphic){stableSince=0;return false;}
         if(context?.requireAsset&&!context.assetSupplied&&!this.assetCandidates(reply).length){stableSince=0;return false;}
         const text=this.text(reply);
         const signature=text+'\n'+images.map(img=>img.currentSrc||img.src).join('\n');

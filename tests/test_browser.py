@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 URL = 'https://chatgpt.com/c/offline-test'
 
 
-def fixture_png(red):
+def fixture_png(red, width=128, height=128):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 128, 128, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress((b'\x00' + bytes([red, 120, 80]) * 128) * 128)) + chunk(b'IEND', b'')
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress((b'\x00' + bytes([red, 120, 80]) * width) * height)) + chunk(b'IEND', b'')
 
 
 FIXTURE = r'''<!doctype html><html><head><meta charset="utf-8"><style>#prompt-textarea{min-height:40px;border:1px solid gray}</style></head><body>
@@ -39,7 +39,8 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
  if(window.omitFirstUserRole && n===1)user.removeAttribute('data-message-author-role');
  if(window.omitFirstUserMarker && n===1)user.textContent=record.prompt.split('[Proto-Disput')[0];
  if(window.userCopy&&window.imageOnlyTurns?.includes(n)){const text=document.createElement('span');text.textContent=user.textContent;user.replaceChildren(text);const copy=document.createElement('button');copy.setAttribute('aria-label','Copy');copy.textContent='Kopieren';user.append(copy);}
- if(window.referenceAfterMarker&&window.imageOnlyTurns?.includes(n)){const img=document.createElement('img');img.src=referencePNG;img.setAttribute('data-loaded','');user.append(img);}
+ if(window.referenceAfterMarker&&window.imageOnlyTurns?.includes(n)){const img=document.createElement('img');img.src=referencePNG;if(!window.referenceNoLoaded)img.setAttribute('data-loaded','');user.append(img);}
+ if(window.referenceBeforeMarker&&window.imageOnlyTurns?.includes(n)){const text=document.createElement('span');text.textContent=user.textContent;const img=document.createElement('img');img.src=referencePNG;user.replaceChildren(img,text);}
  let exchange,exchangeContent,actionTarget;
  if(window.streamedExchange){
    exchange=document.createElement('div');exchangeContent=document.createElement('div');
@@ -83,7 +84,7 @@ document.querySelector('[data-testid="send-button"]').onclick=async()=>{
      }
    }
    if(window.makeAsset || window.assetSteps?.includes(n)){
-     const addImage=()=>{const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img'),inline=window.inlinePNGByTurn?.[n]||window.inlinePNG;img.src=inline||URL.createObjectURL(svg);if(inline){img.setAttribute('data-loaded','');img.alt='Individueller sonamatischer Scannerbericht';img.className='Image-LDLXtM Image-ZGWcOW LoadingImage-VJAV83';img.referrerPolicy='no-referrer';img.draggable=false;}assistant.append(img);window.imageAddedAt=Date.now();};
+     const addImage=()=>{const svg=new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="green"/></svg>'],{type:'image/svg+xml'});const img=document.createElement('img'),inline=window.inlinePNGByTurn?.[n]||window.inlinePNG;img.src=window.regularImageURL||inline||URL.createObjectURL(svg);if(inline&&!window.regularImageURL){img.setAttribute('data-loaded','');img.alt='Individueller sonamatischer Scannerbericht';img.className='Image-LDLXtM Image-ZGWcOW LoadingImage-VJAV83';img.referrerPolicy='no-referrer';img.draggable=false;}if(window.imageInButton){const button=document.createElement('button');button.dataset.testid='generated-image-fixture';button.append(img);assistant.append(button);}else assistant.append(img);window.imageAddedAt=Date.now();};
      if(window.imageDelayByTurn?.[n])setTimeout(addImage,window.imageDelayByTurn[n]);else addImage();
    }
    if(window.sandboxLink){const a=document.createElement('a');a.href='sandbox:/mnt/data/bericht.pdf';a.textContent='bericht.pdf';assistant.append(a);}
@@ -1359,6 +1360,92 @@ class BrowserTests(unittest.TestCase):
             }
           };
         }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
+
+    def external_graphic(self, shared_history=False):
+        graphic=fixture_png(180,1536,1024)
+        self.context.route('https://chatgpt.com/generated-fixture.png',lambda route:route.fulfill(status=200,content_type='image/png',body=graphic))
+        self.inline_graphic()
+        self.page.evaluate('''shared=>{
+          regularImageURL='https://chatgpt.com/generated-fixture.png';imageInButton=true;
+          if(shared){
+            userCopy=false;referenceBeforeMarker=true;
+            const original=document.querySelector('#messages'),history=document.createElement('div');history.id='messages';original.replaceWith(history);
+            const old=document.createElement('div'),editor=document.createElement('div'),copy=document.createElement('button');
+            editor.contentEditable='true';editor.textContent='Früheres eingebettetes Dokument';copy.setAttribute('aria-label','Copy response');copy.textContent='Kopieren';old.append(editor,copy);history.append(old);
+          }
+        }''',shared_history)
+        return graphic
+
+    def test_80_loaded_external_png_without_loaded_attribute_or_response_actions(self):
+        graphic=self.external_graphic()
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(result['run']['results'][0]['assetNames'],['Ergebnis_1.png'])
+        captured=self.page.evaluate("async()=>btoa(String.fromCharCode(...new Uint8Array(await assets['1/Ergebnis_1.png'].arrayBuffer())))")
+        self.assertEqual(base64.b64decode(captured),graphic)
+        self.assertEqual(len(result['sent']),2)
+
+    def test_81_image_button_beside_prompt_without_copy_does_not_use_history_as_prompt(self):
+        self.external_graphic(shared_history=True)
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertEqual(result['run']['results'][0]['assetNames'],['Ergebnis_1.png'])
+
+    def test_82_resume_external_graphic_with_reference_and_older_document(self):
+        self.external_graphic(shared_history=True)
+        self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          runner.pause();await execution;
+          while(!finished.length)await new Promise(r=>setTimeout(r,5));
+          delete run.pending.beforeReply.images;
+          adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000});
+          runner=new ProtoScanner.Runner(adapter,async r=>saves.push(structuredClone(r)),()=>{});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+
+    def test_83_external_image_download_error_is_reported_after_successful_display(self):
+        graphic=self.external_graphic(shared_history=True)
+        self.context.route('https://chatgpt.com/generated-fixture.png',lambda route:route.fulfill(status=200,content_type='image/png',body=graphic) if route.request.resource_type=='image' else route.fulfill(status=403,body='Not available'))
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'angehalten')
+        self.assertIn('HTTP 403',result['run'].get('error',''))
+        self.assertEqual(result['run']['results'],[])
+        self.assertEqual(len(result['sent']),1)
+
+    def test_84_blob_graphic_without_loaded_attribute_is_reused(self):
+        self.external_graphic(shared_history=True)
+        self.page.evaluate('''bytes=>{regularImageURL=URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'image/png'}));}''',list(fixture_png(180)))
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(result['run']['results'][0]['assetNames'],['Ergebnis_1.png'])
+        self.assertEqual(len(result['sent']),2)
+
+    def test_85_image_response_root_busy_state_delays_the_next_step(self):
+        self.external_graphic()
+        self.page.evaluate('''()=>{
+          const send=document.querySelector('[data-testid="send-button"]'),original=send.onclick;
+          send.onclick=async()=>{
+            await original();if(sent.length!==1)return;
+            const branch=document.querySelector('#messages').lastElementChild.firstElementChild.lastElementChild;
+            branch.style.display='block';branch.setAttribute('aria-busy','true');
+            setTimeout(()=>{branch.removeAttribute('aria-busy');window.graphicReadyAt=Date.now();},700);
+          };
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertGreaterEqual(result['sent'][1]['at'],self.page.evaluate('graphicReadyAt'))
+
+    def test_86_source_preview_without_loaded_flag_is_not_an_image_answer(self):
+        self.external_graphic(shared_history=True)
+        self.page.evaluate('assetSteps=[];referenceBeforeMarker=false;referenceAfterMarker=true;referenceNoLoaded=true;adapter.replyTimeout=700')
         result=self.execute()
         self.assertEqual(result['run']['status'],'angehalten')
         self.assertEqual(result['run']['results'],[])

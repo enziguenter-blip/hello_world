@@ -1,6 +1,6 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.10**, 28. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.11**, 29. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
 
 ## Erfolgreich geprüfte Funktionen
 
@@ -114,7 +114,17 @@ Zusätzliche Prüfungen für die Grafikübernahme in Version 0.1.10:
 - Alle elf Schritte laufen mit vier Dokumenteditoren sowie verzögerten reinen Inline-Bildantworten in Schritt 5 und 7 durch. Schritt 8 erhält beide PNG-Dateien und die früheren Dokumenttexte; die Dokumenteditoren bleiben unbeschrieben.
 - Eine nach einem Dateifehler ausdrücklich zugeordnete Ersatzgrafik erhält beim Fortsetzen die Erkennung der reinen Bildantwort. Der Prompt wird nicht erneut gesendet. Zwei voneinander getrennte Bildbereiche werden nicht durch Auswahl des letzten Bildes aufgelöst.
 
-Die Gesamtprüfung deckt **79 Tests ab: 78 bestanden, 1 übersprungen**. Der vollständige Lauf der Tests 1–77 bestand in 116,980 Sekunden mit einem übersprungenen Test. Die danach ergänzten Tests 78–79 wurden zusammen mit dem bestehenden Test 4 separat erfolgreich ausgeführt. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen anhand der Grafikdiagnose aus Version 0.1.10:
+
+- Eine geladene PNG mit 1536 × 1024 Pixeln innerhalb einer Bildschaltfläche ohne `data-loaded`, Begleittext oder gewöhnliche Antwortknöpfe wird über ihre sichtbare HTTP-Adresse erfasst. Die Originalbytes werden exakt verglichen. Der Test scheiterte vor der Änderung am Antworttimeout.
+- Ein gemeinsamer Verlauf enthält einen früheren Dokumenteditor mit Kopierknopf. Der aktuelle Prompt hat keinen Kopierknopf; seine Beispielgrafik liegt im Nutzerzweig, die neue Grafik daneben im Antwortzweig. Die Suche dehnt den Promptbereich nicht auf den ganzen Verlauf aus. Auch dieser Test scheiterte vor der Änderung.
+- Derselbe Aufbau wird mit einer neuen Adapterinstanz und einem alten offenen Schritt ohne gespeicherte Bild-Fingerabdrücke fortgesetzt. Der Prompt wird nicht erneut gesendet. Dieser Test scheiterte ebenfalls vor der Änderung.
+- Das Bild ist sichtbar geladen, sein anschließender Dateizugriff liefert jedoch HTTP 403: Der Fehler wird gemeldet, der Schritt bleibt offen und der Prompt wird nicht wiederholt.
+- Eine Blob-Bildquelle ohne `data-loaded` wird erfasst und an den Folgeschritt übergeben.
+- Ein direkt am Bild-Antwortbereich markierter Ladezustand verzögert den Folgeschritt bis zu seinem Ende.
+- Eine große Beispielgrafik ohne `data-loaded` hinter der Promptmarkierung wird ohne passende Bildantwort nicht als Ergebnis übernommen.
+
+Die Gesamtprüfung deckt **86 Tests ab: 85 bestanden, 1 übersprungen**. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
 
 ## Nicht verifiziert / externe Grenzen
 
@@ -126,6 +136,6 @@ Die Gesamtprüfung deckt **79 Tests ab: 78 bestanden, 1 übersprungen**. Der vol
 
 ## Nächster Praxistest
 
-Version **0.1.10** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Schritt 5 soll anhand der vorhandenen sichtbaren Grafik abgeschlossen werden und direkt Schritt 6 beginnen; bereits gesendete Prompts werden nicht erneut gesendet. „Oberfläche prüfen“ ist weiterhin ein Scanner-Knopf und liefert jetzt auch Bild-Strukturangaben.
+Version **0.1.11** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Im Scanner dieselben Quelldateien auswählen und **Automatisch starten / fortsetzen** drücken. Der offene Schritt 5 soll anhand der vorhandenen sichtbaren Grafik abgeschlossen werden und direkt Schritt 6 beginnen; bereits gesendete Prompts werden nicht erneut gesendet. „Oberfläche prüfen“ liefert weiterhin Bild-Strukturangaben und jetzt zusätzlich Quelltypen sowie die Lage nach dem offenen Prompt.
 
 Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.
