@@ -120,7 +120,7 @@ class BrowserTests(unittest.TestCase):
         self.page.evaluate('''({steps,flags})=>{
           Object.assign(window,flags);
           window.files=[new File(['Originalquelle'],'quelle.md',{type:'text/markdown'})];
-          window.flow={version:1,steps:Array.from({length:steps},(_,i)=>({id:String(i+1),title:'Schritt '+(i+1),files:['quelle.md'],reuse:i?[String(i)]:[],prompt:'Bericht für {{person}}'}))};
+          window.flow={version:1,resultTransfer:'attachments',steps:Array.from({length:steps},(_,i)=>({id:String(i+1),title:'Schritt '+(i+1),files:['quelle.md'],reuse:i?[String(i)]:[],prompt:'Bericht für {{person}}'}))};
           window.run=ProtoScanner.newRun('Testperson',flow,location.href);window.assets={};window.saves=[];
           window.adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,uploadTimeout:1500,replyTimeout:2000,composerTimeout:1000,userTimeout:60});
           window.runner=new ProtoScanner.Runner(adapter,async r=>saves.push(structuredClone(r)),()=>{});
@@ -294,7 +294,17 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(len(result['sent'][0]['names']), 6)
         self.assertIn('manuel.png', result['sent'][4]['names'])
         self.assertNotIn('manuel.png', result['sent'][0]['names'])
-        self.assertEqual(len(result['sent'][7]['names']), 10)
+        self.assertEqual(len(result['sent'][7]['names']), 2)
+        guide='META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md'
+        self.assertEqual(result['sent'][8]['names'],[guide])
+        self.assertIn(guide,result['sent'][8]['prompt'])
+        self.assertIn('Schritt 8: Persönlicher Abschlussbericht',result['sent'][8]['prompt'])
+        self.assertNotIn('keine eigene Vorlagendatei',result['sent'][8]['prompt'])
+        for i,step in enumerate(result['run']['flow']['steps']):
+            self.assertEqual(result['sent'][i]['names'],step['files'])
+            for prior in step['reuse']:
+                source=next(s for s in result['run']['flow']['steps'] if s['id']==prior)
+                self.assertIn(f"Schritt {prior}: {source['title']}",result['sent'][i]['prompt'])
         self.assertTrue(all('Testperson' in item['prompt'] for item in result['sent']))
 
     def test_13_editor_variants_and_hidden_legacy_field(self):
@@ -1222,8 +1232,9 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(len(result['sent']),11)
         for step,text in {2:'Vollständiges Dojo',3:'Vollständiger Individualbericht',6:'Fachliches Dossier',8:'Persönlicher Abschlussbericht'}.items():
             self.assertIn(text,result['run']['results'][step-1]['text'])
-        self.assertIn('Vollständiges Dojo','\n'.join(result['sent'][7]['text']))
-        self.assertIn('Vollständiger Individualbericht','\n'.join(result['sent'][7]['text']))
+        self.assertIn('Schritt 2: Individuelles Dojo',result['sent'][7]['prompt'])
+        self.assertIn('Schritt 3: Individualbericht',result['sent'][7]['prompt'])
+        self.assertNotIn('Vollständiges Dojo','\n'.join(result['sent'][7]['text']))
         self.assertEqual(self.page.evaluate('documentEditors.length'),4)
         self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
 
@@ -1329,8 +1340,10 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(len(result['sent']),11)
         for step in [5,7]:
             self.assertEqual(result['run']['results'][step-1]['assetNames'],['Ergebnis_1.png'])
-            self.assertIn(f'Günter_Schritt_{step}_Ergebnis_1.png',result['sent'][7]['names'])
-        self.assertIn('Vollständiges Dojo','\n'.join(result['sent'][7]['text']))
+            self.assertNotIn(f'Günter_Schritt_{step}_Ergebnis_1.png',result['sent'][7]['names'])
+            self.assertIn(f'Schritt {step}:',result['sent'][7]['prompt'])
+        self.assertEqual(len(result['sent'][7]['names']),2)
+        self.assertIn('endgültige, korrigierte Fassung',result['sent'][7]['prompt'])
         self.assertEqual(self.page.evaluate('window.documentInputEvents||0'),0)
 
     def test_78_supplied_graphic_keeps_image_only_reply_recognition_on_resume(self):
@@ -1602,6 +1615,100 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(len(diagnostic['imageActionPaths']),1)
         for private in ['base64','M13.468','generated-fixture','sonamatischer']:
             self.assertNotIn(private,json.dumps(diagnostic))
+
+    def test_98_reference_handoff_works_with_empty_source_step_and_keeps_archive_files(self):
+        self.bootstrap(steps=2,assetSteps=[1])
+        self.page.evaluate('''()=>{
+          flow.resultTransfer='reference';flow.steps[1].files=[];
+          run.flow=structuredClone(flow);
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(result['sent'][1]['names'],[])
+        self.assertEqual(result['sent'][1]['text'],[])
+        self.assertIn('Schritt 1: Schritt 1',result['sent'][1]['prompt'])
+        self.assertIn('vollständigen Original-Ergebnisdateien',result['sent'][1]['prompt'])
+        self.assertNotIn('Endfassung 1',result['sent'][1]['prompt'])
+        self.assertTrue(result['run']['results'][0]['assetNames'])
+        self.assertTrue(self.page.evaluate('Object.keys(assets).length>0'))
+        self.assertIn('Endfassung 1',self.page.evaluate('async()=>await ProtoScanner.outputFile(run,run.results[0]).text()'))
+
+    def test_99_old_flow_without_transfer_mode_resumes_using_references_after_asset_memory_loss(self):
+        self.bootstrap(steps=2,assetSteps=[1])
+        self.page.evaluate('''async()=>{
+          delete flow.resultTransfer;run.flow=structuredClone(flow);
+          await runner.execute(run,files,assets,{singleStep:true});
+          assets={};adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000});
+          runner=new ProtoScanner.Runner(adapter,async()=>{},()=>{});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertEqual(result['sent'][1]['names'],['quelle.md'])
+        self.assertIn('Schritt 1:',result['sent'][1]['prompt'])
+        self.assertTrue(result['run']['results'][0]['assetNames'])
+
+    def test_100_reference_mode_preserves_pending_prompt_without_resending_it(self):
+        self.bootstrap(steps=2)
+        self.page.evaluate('''async()=>{
+          const execution=runner.execute(run,files,assets);
+          while(!sent.length)await new Promise(r=>setTimeout(r,5));
+          runner.pause();await execution;
+          delete run.flow.resultTransfer;
+          adapter=new ProtoScanner.DOMAdapter(undefined,{pollMs:10,stableMs:80,replyTimeout:2000});
+          runner=new ProtoScanner.Runner(adapter,async()=>{},()=>{});
+        }''')
+        result=self.execute()
+        self.assertEqual(result['run']['status'],'fertig',result['run'].get('error'))
+        self.assertEqual(len(result['sent']),2)
+        self.assertNotIn('Original-Ergebnisdateien',result['sent'][0]['prompt'])
+        self.assertIn('Original-Ergebnisdateien',result['sent'][1]['prompt'])
+
+    def legacy_podcast_flow(self):
+        return self.page.evaluate('''()=>{
+          const old=structuredClone(ProtoScanner.defaultWorkflow);delete old.resultTransfer;
+          const podcast=old.steps.find(step=>step.id==='9');podcast.files=[];
+          podcast.prompt='Erstelle auf Grundlage des persönlichen Abschlussberichts und der relevanten Quellen dieses Chats das Podcast-Dossier für {{person}}. Für diesen Schritt ist in der ursprünglichen Prozessbeschreibung keine eigene Vorlagendatei angegeben.';
+          return old;
+        }''')
+
+    def test_101_saved_old_configuration_gains_podcast_guide_but_active_run_is_unchanged(self):
+        old=self.legacy_podcast_flow()
+        old['steps'][1]['files']=['eigene-dojo-anleitung.md']
+        self.page.evaluate('''old=>{
+          window.saved={workflow:old,latestRun:{version:1,id:'saved-run',person:'Günter',flow:structuredClone(old),chatUrl:location.href,status:'pausiert',results:[],pending:{step:'1',marker:'unchanged-marker'}}};
+          window.browser={storage:{local:{get:async()=>saved,set:async value=>Object.assign(saved,value)}}};
+        }''',old)
+        self.page.add_script_tag(path=ROOT/'extension'/'panel.js')
+        self.page.wait_for_function("document.querySelector('#proto-disput-extension').shadowRoot.querySelector('#workflow').value.includes('META_PROMPT_0S_FINAL')")
+        config=json.loads(self.page.locator('#workflow').input_value())
+        self.assertEqual(config['steps'][1]['files'],['eigene-dojo-anleitung.md'])
+        self.assertEqual(config['steps'][8]['files'],['META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md'])
+        self.assertEqual(self.page.evaluate('saved.latestRun.flow'),old)
+        self.assertEqual(self.page.evaluate('saved.latestRun.pending.marker'),'unchanged-marker')
+        self.assertEqual(self.page.evaluate('sent.length'),0)
+
+    def test_102_custom_podcast_instructions_are_not_overwritten(self):
+        old=self.legacy_podcast_flow()
+        old['steps'][8]['files']=['eigene-podcast-anleitung.md']
+        result=self.page.evaluate('flow=>ProtoScanner.migrateWorkflow(flow)',old)
+        self.assertEqual(result,old)
+        old['steps'][8]['files']=[]
+        old['steps'][8]['prompt']='Mein eigener Podcast-Auftrag für {{person}}'
+        self.assertEqual(self.page.evaluate('flow=>ProtoScanner.migrateWorkflow(flow)',old),old)
+
+    def test_103_missing_podcast_guide_stops_before_first_upload_or_send(self):
+        self.bootstrap(steps=1)
+        old=self.legacy_podcast_flow()
+        message=self.page.evaluate('''async old=>{
+          files=[...new Set(old.steps.flatMap(step=>step.files))].map(name=>new File(['Quelle '+name],name));
+          run=ProtoScanner.newRun('Günter',old,location.href);
+          try{await runner.execute(run,files,assets);return '';}catch(error){return error.message;}
+        }''',old)
+        self.assertIn('Schritt 9',message)
+        self.assertIn('META_PROMPT_0S_FINAL',message)
+        self.assertEqual(self.page.evaluate('sent.length'),0)
+        self.assertEqual(self.page.locator('#previews').inner_text(),'')
 
 
 if __name__ == '__main__':

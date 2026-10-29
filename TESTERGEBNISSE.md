@@ -1,13 +1,15 @@
 # Prüfstand der Testversion
 
-Stand: Version **0.1.13**, 29. Oktober 2026. Alle Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+Stand: Version **0.1.14**, 29. Oktober 2026. Alle hier ausgeführten Ablaufprüfungen laufen gegen eine **simulierte Oberfläche**, nicht gegen ChatGPT oder ein LLM. Die Simulation verwendet eine abgefangene Testseite unter einer ChatGPT-URL, ohne eine Anmeldung oder Modellanfrage auszuführen. Das prüft die Browserbedienung, nicht die fachliche Auswertung oder die Erkennung der tatsächlichen aktuellen ChatGPT-Oberfläche.
+
+Zusätzliche Praxisevidenz: Der Nutzer bestätigte einen vollständigen Live-Durchlauf von 0.1.13 und stellte den finalen Chat-Export bereit. Dieser enthält elf aufeinanderfolgende Schritt-Prompts, darunter beide Bildkorrekturen vor den nächsten Prompts. Mehrere Folgeantworten benennen die erneut angehängten Schritt-Dateien als bloße Zusammenfassungen. Der Export enthält nicht alle verlinkten Originaldateien und erlaubt daher keine vollständige fachliche Prüfung oder einen Bytevergleich der korrigierten Grafiken. Die Änderungen aus 0.1.14 benötigen noch einen eigenen Live-Test.
 
 ## Erfolgreich geprüfte Funktionen
 
 - Upload der vorgesehenen Dateien mit echten Browser-`File`-Objekten.
 - Kein Folgeschritt, solange die Antwort noch generiert wird; auch dann nicht, wenn ein Abschlussknopf vorzeitig vorhanden ist.
 - Kein Folgeschritt bei fehlendem Abschlussknopf.
-- Erneute Übergabe des fertigen Antworttextes als Markdown-Datei und von direkt zugänglichen Bilddateien.
+- Standardmäßig Verweise auf vollständige frühere Original-Ergebnisdateien im selben Chat, ohne erneute Ergebnisanhänge. Die ausdrücklich konfigurierbare Übergabe als Markdown und Bilddateien bleibt separat getestet.
 - Pause und Fortsetzen ohne erneutes Senden eines bereits gesendeten Prompts.
 - Anhalten bei einem unlesbaren `sandbox:`-Dateilink und Fortsetzen mit ausdrücklich manuell zugeordneter Ersatzdatei.
 - Anhalten bei veränderten Quellinhalten, fehlenden Dateien und mehrdeutigen Dateinamen.
@@ -142,18 +144,24 @@ Zusätzliche Prüfungen anhand der vollständig bereitgestellten Schaltfläche:
 - Eine bereits fertige Bildantwort mit „Bild kopieren“ wird mit neuer Adapterinstanz fortgesetzt, ohne den offenen Prompt erneut zu senden. Dieser Test scheiterte vor der Änderung.
 - Alte Selektorkonfigurationen ohne `imageCompletion` übernehmen den neuen Standard. Die Diagnose weist genau eine Bild-Abschlussaktion und deren Strukturpfad aus, ohne SVG-Pfade, Bilddaten oder Bildadressen zu exportieren.
 
-Die Gesamtprüfung deckt **97 Tests ab: 96 bestanden, 1 übersprungen**. Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud.
+Zusätzliche Prüfungen für Version 0.1.14:
+
+- Alle elf Standardschritte laden ausschließlich ihre vorgesehenen Quell- und Anleitungsdateien hoch. Folgeprompts referenzieren jede konfigurierte Abhängigkeit mit Nummer und Titel. Schritt 8 erhält keine erneut hochgeladenen PNGs oder Textabschriften, sondern Verweise auf die endgültigen korrigierten Originaldateien. Ergebnistext und Bilddateien bleiben für die lokale Sicherung erfasst; Dokumenteditoren werden nicht verändert.
+- Ein Folgeschritt ohne neue Quellen sendet nur den Prompt mit Chat-Verweis und erzeugt keine Ergebnisanhänge. Die Abschrift ist weiterhin als Archivdatei verfügbar.
+- Eine ältere Konfiguration ohne `resultTransfer` setzt nach einem Verlust des Bild-Arbeitsspeichers per Chat-Verweis fort. Ein schon offener Prompt wird beim Wechsel auf Verweise nicht erneut gesendet.
+- Die vom Nutzer benannte Anleitung `META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md` wird genau in Schritt 9 hochgeladen und dort im Prompt genannt. Fehlt sie, hält die Dateiprüfung bereits vor dem ersten Upload und Prompt an.
+- Eine gespeicherte alte Standardkonfiguration erhält die neue Schritt-9-Anleitung, ohne geänderte Dateinamen anderer Schritte zu verlieren. Bereits begonnene Läufe behalten ihre gespeicherte Quellenkonfiguration und offene Markierung. Eigene Schritt-9-Prompts oder Dateilisten werden nicht ersetzt.
+
+Die Gesamtprüfung deckt **103 Tests ab: 102 bestanden, 1 übersprungen** (151,830 Sekunden). Mehrere Tests prüfen zusätzliche Varianten. Der übersprungene Test betrifft die tatsächliche Installation als Chrome-Erweiterung in dieser Cloud. JavaScript-Syntax und `git diff --check` sind ebenfalls geprüft.
 
 ## Nicht verifiziert / externe Grenzen
 
 - **Installation als Browser-Erweiterung:** Der Chromium-Browser der Cloud meldet beim Laden entpackter Erweiterungen: „Loading of unpacked extensions is disabled by the administrator.“ Diese Richtlinie wurde nicht umgangen. Panel und Steuerung wurden als lokal eingebundene Skripte funktional geprüft; das ist kein Ersatz für die Installation und den Test in einem echten Erweiterungskontext.
 - **Firefox:** Hier nicht installiert. Die offiziellen Downloadserver für den Playwright-Firefox-Testbrowser wurden mit HTTP 403 „Domain forbidden“ gesperrt. Deshalb kein ausgeführter Firefox-Test. Ein Firefox-Manifest und ein temporär ladbares Paket sind vorbereitet.
 - **Windows 10:** Kein Windows-Rechner in dieser Cloud. Die lokale Installation muss dort geprüft werden.
-- **Echtes ChatGPT-Konto:** Kein angemeldetes Benutzerkonto und keine echten Fachquellen vorhanden. Selektoren, Upload-Bestätigung, Abschluss-Erkennung, Grafikgenerierung, Zugriffe auf originale Downloadlinks und ein vollständiger fachlicher Durchlauf sind dort noch zu erproben. Änderungen der Oberfläche können Anpassungen erfordern.
+- **Echtes ChatGPT-Konto:** In dieser Cloud kein angemeldetes Benutzerkonto und keine echten Fachquellen vorhanden. Der Nutzer bestätigte den vollständigen Live-Durchlauf von 0.1.13. Die neuen Chat-Verweise und die nachträglich ergänzte Anleitung sind hier nur mit Testdateien geprüft. Verfügbarkeit früherer Chat-Dateien und das tatsächliche Lesen ihrer Inhalte müssen im nächsten Live-Durchlauf überprüft werden. Änderungen der Oberfläche können Anpassungen erfordern.
 - **Fachliche Qualität und Kontext:** Keine Prüfung, dass ein Modell alle Quellen vollständig liest, spätere Berichte korrekt erstellt oder der gesamte Verlauf im aktiven Kontext liegt. Die Automatisierung kann dies nicht garantieren.
 
 ## Nächster Praxistest
 
-Version **0.1.13** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung neu laden und den ursprünglichen Chat mit F5 neu laden. Einen noch offenen Bildschritt nach dem Erscheinen des bestätigten „Bild kopieren“-Knopfs automatisch übernehmen lassen. Wurde Schritt 5 bereits zu früh gespeichert, die endgültige Grafik aus ChatGPT herunterladen, unter „Ergebnisdateien ergänzen“ Schritt 5 auswählen und mit aktivierter Option „Bisherige Ergebnisdateien dieses Schritts ersetzen“ zuordnen. Danach mit denselben Quelldateien den vorhandenen Lauf fortsetzen. Gesendete Prompts werden nicht erneut gesendet; der Fortschritt wird nicht zurückgesetzt.
-
-Ein vollständiger Live-Durchlauf sowie insbesondere die Bild- und Downloadfunktionen in Schritt 5 und 7 bleiben an der echten Oberfläche zu erproben.
+Version **0.1.14** im bisherigen Erweiterungsordner installieren, die bestehende Erweiterung und den ChatGPT-Tab neu laden. Den abgeschlossenen Lauf zuvor als ZIP sichern und für den neuen Ablauf einen neuen Chat und neuen Lauf verwenden. Bei den Quelldateien auch die neu benannte Schritt-9-Anleitung auswählen. Prüfen, dass Folgeprompts auf die früheren vollständigen Originaldateien verweisen, ohne Ergebnisanhänge zu erzeugen, und dass Schritt 9 seine Anleitung tatsächlich erhält. Die fachliche Prüfung der Originaldateien und korrigierten Grafiken bleibt gesondert erforderlich.

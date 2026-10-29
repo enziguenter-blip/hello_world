@@ -31,7 +31,8 @@ def main():
             )
             archive.writestr('START_HIER.txt', (
                 f'PROTO-DISPUT - LOKALE TESTVERSION {manifest["version"]}\r\n\r\n'
-                'VERSION 0.1.13 - Den bestätigten Abschlussknopf Bild kopieren erkennen; nach Korrekturen weiterhin nur die endgültige Grafik übernehmen.\r\n'
+                'VERSION 0.1.14 - Folgeprompts verweisen auf vollständige Original-Ergebnisdateien im selben Chat. Keine erneuten Ergebnisanhänge; neue Anleitungen werden weiterhin hochgeladen.\r\n'
+                'Neu für Schritt 9: META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md bei den Quelldateien mit auswählen. Die alte Standardzuordnung wird für neue Läufe automatisch ergänzt; begonnene Läufe behalten ihre Quellenkonfiguration.\r\n'
                 'Bei offenem Schritt 5 nach dem Update dieselben Quellen auswählen und Automatisch starten / fortsetzen drücken. Die vorhandene Grafik wird bei eindeutiger Zuordnung übernommen; ihr Prompt wird nicht erneut gesendet.\r\n'
                 'Schritt 5 schon zu früh abgeschlossen? Endgültige Grafik aus ChatGPT herunterladen, unter Ergebnisdateien ergänzen Schritt 5 wählen, Bisherige Ergebnisdateien dieses Schritts ersetzen aktivieren und die korrigierte Datei zuordnen. Danach bestehenden Lauf fortsetzen.\r\n'
                 'Oberfläche prüfen ist ein Knopf unter Diagnose und manuelle Reparatur im Scanner, kein Auftrag an ChatGPT.\r\n\r\n'
@@ -46,7 +47,7 @@ def main():
                 'Erster Prompt schon gesendet und passende OK-Antwort fertig? Automatisch starten / fortsetzen liest die eindeutige Bestätigung und beginnt Schritt 2. Der alte Prompt wird nicht erneut gesendet.\r\n'
                 'Einzelschritt-Tests und manuelle Reparatur sind im gleichnamigen Diagnosebereich eingeklappt; sie gehören nicht zum normalen automatischen Ablauf.\r\n\r\n'
                 'Nutzt dein bestehendes ChatGPT-Konto, keine separat berechnete API.\r\n'
-                'Noch nicht am echten ChatGPT-Konto geprüft. Manche Ergebnisdownloads benötigen eine manuelle Übergabe.\r\n'
+                '0.1.13: Vollständiger Live-Durchlauf vom Nutzer bestätigt. 0.1.14: Chat-Verweise offline geprüft; Live-Test steht aus. Manche Ergebnisdownloads benötigen eine manuelle Übergabe.\r\n'
                 'Anleitung und Grenzen: ANLEITUNG.md (bei Bedarf mit einem Texteditor öffnen).\r\n'
                 'Prüfumfang: TESTERGEBNISSE.md.\r\n'
             ))

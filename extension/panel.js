@@ -42,7 +42,7 @@
       <input id="assets" type="file" multiple><div id="resultFiles"></div>
     </details>
     <details><summary>Dateizuordnung und Prompts bearbeiten</summary>
-      <p class="muted">Dateinamen müssen exakt passen. {{person}} wird ersetzt. reuse enthält IDs früherer Ergebnisse, die als Markdown und vorhandene Ergebnisdateien wieder angehängt werden. requireAsset verlangt eine Grafik/Datei. Änderungen gelten für neue Läufe.</p>
+      <p class="muted">Dateinamen müssen exakt passen. {{person}} wird ersetzt. reuse enthält IDs früherer Ergebnisse, auf deren vollständige Dateien der Folgeprompt im selben Chat verweist. resultTransfer: "attachments" aktiviert stattdessen das erneute Anhängen; Standard ist "reference", auch für ältere Konfigurationen ohne diese Angabe. requireAsset verlangt eine Grafik/Datei. Änderungen gelten für neue Läufe.</p>
       <label for="workflow">Ablaufkonfiguration (JSON)</label><textarea id="workflow" spellcheck="false"></textarea>
       <div class="row"><button id="saveConfig" type="button">Konfiguration speichern</button><button id="exportConfig" type="button">JSON herunterladen</button></div>
       <label for="importConfig">Konfiguration importieren</label><input id="importConfig" type="file" accept=".json,application/json">
@@ -52,7 +52,7 @@
       <textarea id="selectors" spellcheck="false" aria-label="CSS-Selektoren"></textarea>
       <button id="saveSelectors" type="button">Selektoren speichern</button>
     </details>
-    <p class="muted">Nicht an einem angemeldeten ChatGPT-Konto geprüft. Der gesamte Verlauf ist nicht automatisch vollständig im aktiven Modellkontext. Quellinhalte werden nicht separat dauerhaft von der Erweiterung gespeichert. Berichte, Konfiguration und Fortschritt liegen lokal im Erweiterungsspeicher. Binärdateien bleiben bis zum Neuladen im Arbeitsspeicher. ZIP-Sicherungen bitte selbst herunterladen.</p>
+    <p class="muted">Ein vollständiger Live-Durchlauf wurde vom Nutzer für 0.1.13 bestätigt; die neuen Chat-Verweise benötigen noch einen Praxistest. Der gesamte Verlauf ist nicht automatisch vollständig im aktiven Modellkontext. Quellinhalte werden nicht separat dauerhaft von der Erweiterung gespeichert. Berichte, Konfiguration und Fortschritt liegen lokal im Erweiterungsspeicher. Binärdateien bleiben bis zum Neuladen im Arbeitsspeicher. ZIP-Sicherungen bitte selbst herunterladen.</p>
   </section>`;
   document.documentElement.append(host);
   const $=id=>shadow.getElementById(id);
@@ -176,14 +176,14 @@
     pickFromPage('Klicke direkt auf die fertige ChatGPT-Antwort – keine Eingabe nötig',target=>adapter.answerAt(target),el=>adoptElement(adapter,el));
   });
   $('check').onclick=guard(async()=>{
-    const errors=ns.preflight(run?.flow||config(),files);
+    const errors=ns.preflight(run?.flow||ns.migrateWorkflow(config()),files);
     if(errors.length)throw Error(errors.join('\n'));
     $('status').textContent='Alle vorgesehenen Quelldateien sind eindeutig vorhanden. Lesbarkeit und Uploadfähigkeit werden erst in ChatGPT geprüft.';
   });
   async function execute(singleStep){
     if(runner?.running)return;
     if(!run){
-      const flow=config(),problems=ns.preflight(flow,files);
+      const flow=ns.migrateWorkflow(config()),problems=ns.preflight(flow,files);
       if(problems.length)throw Error(problems.join('\n'));
       run=ns.newRun($('person').value,flow,location.href);
     }
@@ -236,7 +236,7 @@
   });
   guard(async()=>{
     const saved=await storage.get();
-    $('workflow').value=JSON.stringify(saved.workflow||ns.defaultWorkflow,null,2);
+    $('workflow').value=JSON.stringify(ns.migrateWorkflow(saved.workflow||ns.defaultWorkflow),null,2);
     selectors=ns.migrateSelectors(saved.selectors);$('selectors').value=JSON.stringify(selectors,null,2);
     if(saved.latestRun){run=saved.latestRun;run.status=run.status==='läuft'?'pausiert':run.status;run.error=run.error||'Gespeicherter Lauf geladen. Bitte dieselben Quelldateien erneut auswählen. Ein offener Schritt wird nicht erneut gesendet.';}
     paint();

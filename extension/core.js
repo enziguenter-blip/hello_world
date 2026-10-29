@@ -4,6 +4,7 @@
   const safeName = value => normalize(value).replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').replace(/[. ]+$/g,'').slice(0,100) || 'Ergebnis';
   function validateWorkflow(flow) {
     if (!flow || flow.version !== 1 || !Array.isArray(flow.steps) || !flow.steps.length) throw Error('Die Konfiguration benötigt version: 1 und mindestens einen Schritt.');
+    if(flow.resultTransfer!==undefined && !['reference','attachments'].includes(flow.resultTransfer))throw Error('resultTransfer muss reference oder attachments sein.');
     const previous = new Set();
     for (const step of flow.steps) {
       if (!step.id || typeof step.id !== 'string' || previous.has(step.id)) throw Error('Jeder Schritt benötigt eine eindeutige Text-ID.');
@@ -43,10 +44,19 @@
     return null;
   }
   function promptFor(run,step) {
-    return `${step.prompt.replaceAll('{{person}}',run.person)}\n\n${markerFor(run,step)}`;
+    let prompt=step.prompt.replaceAll('{{person}}',run.person);
+    if(run.flow.resultTransfer!=='attachments' && step.reuse.length){
+      const references=step.reuse.map(id=>{
+        const source=run.flow.steps.find(s=>s.id===id);
+        return `- Schritt ${id}: ${source.title}`;
+      }).join('\n');
+      prompt+=`\n\nNutze die vollständigen Original-Ergebnisdateien, die du bereits in diesem Chat für ${run.person} erstellt hast:\n${references}\nÖffne und lies diese zuvor erstellten Dateien im Chat; bei Grafiken verwende ausschließlich die endgültige, korrigierte Fassung. Die Dateien werden nicht erneut angehängt. Verwende keine Kurzfassung oder Platzhalterdatei als Ersatz für die vollständige Ergebnisdatei. Falls eine benötigte Datei nicht mehr zugänglich ist, benenne konkret die betroffene Datei und die daraus entstehende Lücke.`;
+    }
+    return `${prompt}\n\n${markerFor(run,step)}`;
   }
   function newRun(person,flow,url) {
     if (!person.trim()) throw Error('Bitte eine Zielperson eintragen.');
+    flow=ns.migrateWorkflow(flow);
     validateWorkflow(flow);
     return {version:1,id:crypto.randomUUID(),person:person.trim(),flow:structuredClone(flow),chatUrl:url,status:'bereit',results:[],pending:null,createdAt:new Date().toISOString()};
   }
@@ -149,6 +159,7 @@
             for (const id of step.reuse) {
               const previous=run.results.find(r=>r.step===id);
               if (!previous) throw Error(`Ergebnis aus Schritt ${id} fehlt.`);
+              if(run.flow.resultTransfer!=='attachments')continue;
               files.push(outputFile(run,previous));
               if (previous.assetNames?.length) {
                 for (const name of previous.assetNames) {

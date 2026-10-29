@@ -1,10 +1,20 @@
 # Proto-Disput im ChatGPT-Browser
 
-Aktuelle Version: **0.1.13**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
+Aktuelle Version: **0.1.14**. Die Versionsnummer wird oben im Scanner-Panel angezeigt.
 
 Lokale Browser-Erweiterung für Windows 10, Firefox und Chrome. Sie bedient deinen bestehenden ChatGPT-Chat, verwendet dein angemeldetes Konto und **keine API**. Keine eigene Serverinstallation, keine Bibliotheken von fremden Servern, keine zusätzliche API-Abrechnung. Die normalen Beschränkungen deines ChatGPT-Tarifs bleiben bestehen.
 
-**Stand: Prototyp, nicht an einem echten angemeldeten ChatGPT-Konto getestet.** Automatische Uploads und Downloads sind von der aktuellen Oberfläche abhängig. Ein vollständig unbeaufsichtigter Lauf wird noch nicht als verifiziert zugesichert. An einer simulierten Chatoberfläche werden Uploads, Antwortabschluss, Übergaben, Pausen und ZIP-Export getestet. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+**Stand: Prototyp mit einem vom Nutzer bestätigten vollständigen Live-Durchlauf der Version 0.1.13.** Der bereitgestellte Chat-Export enthält alle elf Schritte. Die fachliche Richtigkeit, Vollständigkeit der Originaldateien und die Auswahl beider korrigierter PNGs lassen sich aus diesem Export allein nicht vollständig verifizieren. Die Änderung aus 0.1.14 wurde gegen eine simulierte Oberfläche geprüft; ihr Live-Test steht aus. Ergebnisse und Testumfang stehen in `TESTERGEBNISSE.md`.
+
+## Version 0.1.14: Auf Originalergebnisse im Chat verweisen
+
+Folgeprompts verweisen jetzt ausdrücklich auf die vollständigen, zuvor im selben Chat erstellten Original-Ergebnisdateien. Die benötigten Schritte werden mit Nummer und Titel genannt. Die Erweiterung hängt ihre Textabschriften und gespeicherten Grafiken nicht erneut an. Neu benötigte Anleitungen und Vorlagen werden weiterhin gemäß `files` hochgeladen. Bei Grafiken gilt die endgültige korrigierte Fassung; fehlender Zugriff muss im Antworttext konkret benannt werden.
+
+Damit dienen die teilweise kurzen Textabschriften der Erweiterung nicht länger als neue Quellen für Folgeprompts. Antworten und zugängliche Originaldateien werden weiterhin für die ZIP-Sicherung erfasst. Fehlende Binärdateien im Arbeitsspeicher nach F5 verhindern den Verweis auf ein früheres Ergebnis nicht; im ZIP bleiben sie als fehlend ausgewiesen.
+
+`resultTransfer: "reference"` ist der Standard, auch bei gespeicherten Konfigurationen und Läufen ohne diese Angabe. Für ausdrücklich gewünschte erneute Anhänge kann `resultTransfer: "attachments"` gesetzt werden. Bereits offene Prompts werden unverändert fortgesetzt und nicht erneut gesendet. Abgeschlossene Läufe bleiben abgeschlossen.
+
+**Anleitung für Schritt 9 ergänzt:** `META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md` muss bei den Quelldateien mit ausgewählt werden. Sie wird ausschließlich in Schritt 9 hochgeladen. Der Prompt verlangt das Podcast-Dossier gemäß dieser Anleitung statt des bisherigen allgemeinen Auftrags ohne Vorlage. Die alte ausgelieferte Schritt-9-Konfiguration wird für neue Läufe automatisch angepasst, auch wenn die Dateinamen anderer Schritte bereits bearbeitet wurden. Eigene Schritt-9-Prompts oder Dateizuordnungen werden erhalten. Bereits begonnene Läufe behalten ihre gespeicherte Quellenkonfiguration; die neue Anleitung gilt für neue Läufe.
 
 ## Version 0.1.13: Den bestätigten Abschlussknopf „Bild kopieren“ erkennen
 
@@ -174,11 +184,11 @@ Falls die passende Antwort nicht als Vorschau erscheint: **Keine passende Vorsch
 ## Übergabe und Wiederverwendung von Ergebnissen
 
 - Jede abgeschlossene Antwort wird als **Textabschrift in einer Markdown-Datei** gesichert. Die Abschrift ist keine originalgetreue Übernahme komplexer Formatierung und enthält keine verborgenen Gedankengänge. Sie ist nicht identisch mit einer möglicherweise zusätzlich vom LLM erzeugten PDF-/Word-Datei.
-- `reuse` legt fest, welche früheren Textabschriften und gespeicherten Original-Ergebnisdateien erneut als Anhänge übergeben werden. Ein Download auf die Festplatte mit anschließendem Upload ist dafür nicht nötig. Der Chatverlauf bleibt zusätzlich im selben Chat erhalten.
+- `reuse` legt fest, auf welche früheren Original-Ergebnisdateien der Prompt mit Schrittnummer und Titel im selben Chat verweist. Standardmäßig werden dafür keine neuen Anhänge erzeugt. `resultTransfer: "attachments"` aktiviert bei Bedarf die frühere erneute Übergabe von Textabschriften und vorhandenen Originaldateien.
 - Sichtbare Grafiken und direkt lesbare Dateilinks innerhalb der Antwort versucht die Erweiterung als Originaldateien zu übernehmen. Es werden nur sichtbare URLs gelesen; keine internen API-Endpunkte geraten, keine Zugangsdaten extrahiert und keine Downloads in beliebigen Windows-Ordnern überwacht.
 - **Grenze:** Manche ChatGPT-Dateilinks, insbesondere `sandbox:`-Links, können nur durch die Oberfläche aufgelöst werden. Bilddateien können ebenfalls durch Zugriffsbeschränkungen unlesbar sein. In diesem Fall pausiert der Ablauf. Datei regulär aus ChatGPT herunterladen, im Panel unter **Ergebnisdateien ergänzen** dem offenen Schritt zuordnen und fortsetzen. Diese manuelle Ersatz-Zuordnung wird im Laufprotokoll festgehalten.
 - Die Infografik-Schritte 5 und 7 gelten erst mit einer erkannten oder ausdrücklich ergänzten Datei als abgeschlossen. Die Prüfung bestätigt das Vorhandensein einer Datei, nicht ihre fachliche oder grafische Qualität.
-- Für Schritt 9 war keine separate Vorlage angegeben. Der entsprechende Prompt ist als Bearbeitungsvorschlag enthalten; ergänze eine Vorlage in `files`, wenn du eine hast.
+- Schritt 9 lädt die Anleitung `META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md` hoch und verweist zusätzlich auf den vollständigen persönlichen Abschlussbericht aus Schritt 8.
 - Das ZIP enthält die Textberichte, verfügbare Original-Ergebnisdateien und `lauf.json`. **Nicht enthalten:** die ursprünglichen Quelldateien. Fehlen nach einem Neuladen Binärdateien, werden sie im ZIP ausdrücklich als fehlend aufgelistet.
 
 ## Wann beginnt der nächste Schritt?
@@ -189,7 +199,7 @@ Bei Pause kann ChatGPT weiterarbeiten; nur die Ablaufsteuerung wird unterbrochen
 
 ## Kontext und Dateien
 
-**Ein einzelner Chat garantiert nicht, dass zwölf beziehungsweise elf lange Arbeitsschritte gleichzeitig vollständig im Modellkontext liegen.** Kontextgrenzen, Dateiverarbeitung und Komprimierung hängen von Modell, Tarif und ChatGPT ab. Die Erweiterung kann diese Grenzen nicht messen, vergrößern oder umgehen. Erneutes Anhängen wichtiger Ergebnisse macht die Übergaben explizit, garantiert aber ebenfalls kein vollständiges Einlesen. Sie prüft keine Behauptung des LLMs, es habe „100 % gelesen“, und prüft nicht automatisch die Einhaltung sämtlicher Fachvorlagen oder der 5.000-Zeichen-Vorgabe.
+**Ein einzelner Chat garantiert nicht, dass elf lange Arbeitsschritte gleichzeitig vollständig im Modellkontext liegen.** Kontextgrenzen, Dateiverarbeitung und Komprimierung hängen von Modell, Tarif und ChatGPT ab. Die Erweiterung kann diese Grenzen nicht messen, vergrößern oder umgehen. Die Folgeprompts fordern das Öffnen der früheren Originaldateien im Chat und das Benennen fehlender Zugriffe; ein Verweis garantiert deren fortdauernde Verfügbarkeit nicht. Die Erweiterung prüft keine Behauptung des LLMs, es habe „100 % gelesen“, und prüft nicht automatisch die Einhaltung sämtlicher Fachvorlagen oder der 5.000-Zeichen-Vorgabe.
 
 ## Lokale Daten und Berechtigungen
 

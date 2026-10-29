@@ -1,10 +1,13 @@
 /* No remote scripts, API calls or account credentials. */
 (() => {
   const ns = globalThis.ProtoScanner = globalThis.ProtoScanner || {};
-  ns.version = '0.1.13';
+  ns.version = '0.1.14';
   const read = 'Lies die beigefügten Unterlagen vollständig. Wenn eine Datei nicht lesbar oder nicht vollständig verfügbar ist, benenne das ausdrücklich. Behaupte keine ungeprüfte Vollständigkeit. ';
+  const podcastInstruction='META_PROMPT_0S_FINAL_V1.5.4_Druckkontext_Fiktives_Dojo_Gruppenfeld_Zonenlogik.md';
+  const previousPodcastPrompt='Erstelle auf Grundlage des persönlichen Abschlussberichts und der relevanten Quellen dieses Chats das Podcast-Dossier für {{person}}. Für diesen Schritt ist in der ursprünglichen Prozessbeschreibung keine eigene Vorlagendatei angegeben.';
   ns.defaultWorkflow = {
     version: 1,
+    resultTransfer: 'reference',
     title: 'Proto-Disput · 11 Schritte',
     steps: [
       {id:'1', title:'Grundlagen einlesen', files:[
@@ -33,13 +36,22 @@
         'Synopsis_Personenbezogene_Sonamatische_Abschlusszusammenfassung_V1.5.4(1).md'
       ], reuse:['2','3','4','5','6','7'],
         prompt:read+'Erstelle nach der Synopsis den persönlichen Abschlussbericht für {{person}}. Verwende alle relevanten Quellen dieses Chats. Der Beispielbericht von Marlies dient ausschließlich als Inspiration, nicht als Quelle über {{person}}.'},
-      {id:'9', title:'Podcast-Dossier', files:[], reuse:['8'],
-        prompt:'Erstelle auf Grundlage des persönlichen Abschlussberichts und der relevanten Quellen dieses Chats das Podcast-Dossier für {{person}}. Für diesen Schritt ist in der ursprünglichen Prozessbeschreibung keine eigene Vorlagendatei angegeben.'},
+      {id:'9', title:'Podcast-Dossier', files:[podcastInstruction], reuse:['8'],
+        prompt:read+'Erstelle das Podcast-Dossier für {{person}} gemäß der beigefügten Anleitung '+podcastInstruction+'. Nutze den persönlichen Abschlussbericht und die relevanten Quellen dieses Chats.'},
       {id:'10', title:'Podcast-Rezeptkarte', files:['meta_prompt_1_v3(20261019-175849).md'], reuse:['9'],
         prompt:read+'Erstelle mit dem Podcast-Dossier die Podcast-Rezeptkarte für {{person}}.'},
       {id:'11', title:'Podcast-Prompt', files:['meta_prompt_3_v3(20261019-202645).md'], reuse:['9','10'],
         prompt:read+'Erstelle anhand der bisherigen Ergebnisse den Podcast-Prompt für {{person}}.'}
     ]
+  };
+  ns.migrateWorkflow=flow=>{
+    const upgraded=structuredClone(flow);
+    const step=Array.isArray(upgraded?.steps)?upgraded.steps.find(s=>s?.id==='9'):null;
+    if(step && step.title==='Podcast-Dossier' && Array.isArray(step.files) && !step.files.length && step.prompt===previousPodcastPrompt){
+      const current=ns.defaultWorkflow.steps.find(s=>s.id==='9');
+      step.files=[...current.files];step.prompt=current.prompt;
+    }
+    return upgraded;
   };
   ns.defaultSelectors = {
     composer:[
